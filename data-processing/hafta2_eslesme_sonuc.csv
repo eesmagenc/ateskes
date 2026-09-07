@@ -1,3 +1,3 @@
-yangin_id,en_yakin_kritik_alan,kritik_alan_tipi,mesafe_metre,tahliye_skoru,yayilma_hizi
-yangin_01,İslamhaneleri,koy,470.4,0.099,yavas
-yangin_02,İkinci Bahar Huzur Evi,huzurevi,592.1,0.118,yavas
+yangin_id,en_yakin_kritik_alan,kritik_alan_tipi,mesafe_metre,egim_yonu,ruzgar_egime_uyumlu,tahliye_skoru,yayilma_hizi
+yangin_01,İslamhaneleri,koy,470.4,kuzey,False,0.095,yavas
+yangin_02,İkinci Bahar Huzur Evi,huzurevi,592.1,dogu,False,0.113,yavas
