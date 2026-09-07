@@ -1,0 +1,7 @@
+bolge_id,isim,tip,lat,lon,yukseklik_metre,egim_derece,risk_skoru,oncelik_skoru
+mugla_01,İslamhaneleri,koy,37.029895,27.2947027,40.0,11.9,0.141,0.7
+mugla_02,Bodrum Amerikan Hastanesi,hastane,37.0399394,27.4289622,13.0,1.7,0.105,1.0
+mugla_03,Kemer İlköğretim Okulu,okul,36.64692,29.3620705,124.0,1.1,0.103,0.9
+mugla_04,İkinci Bahar Huzur Evi,huzurevi,36.8552761,28.279101,5.0,9.1,0.131,0.9
+mugla_05,Gürece,koy,37.0395376,27.3224322,160.0,10.8,0.137,0.7
+mugla_06,isimsiz,hastane,36.6223089,29.1150102,5.0,2.3,0.108,1.0
