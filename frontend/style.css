@@ -1,0 +1,740 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+#map {
+  width: 100%;
+  height: 100vh;
+}
+
+.risk-marker {
+  position: relative;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+
+.risk-marker:hover {
+  transform: scale(1.3);
+  z-index: 1000;
+}
+
+/* --- Merkez nokta (::before) --- */
+.risk-marker::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 45%;
+  height: 45%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+/* --- Düşük risk --- */
+.risk-marker.dusuk {
+  width: 14px;
+  height: 14px;
+  background: rgba(46, 204, 113, 0.35);
+  box-shadow: 0 0 10px 3px rgba(46, 204, 113, 0.5);
+}
+
+.risk-marker.dusuk::before {
+  background: #2ecc71;
+}
+
+/* --- Orta risk --- */
+.risk-marker.orta {
+  width: 16px;
+  height: 16px;
+  background: rgba(241, 196, 15, 0.35);
+  box-shadow: 0 0 12px 4px rgba(241, 196, 15, 0.55);
+}
+
+.risk-marker.orta::before {
+  background: #f1c40f;
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 15px 5px rgba(255, 0, 0, 0.6);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow: 0 0 24px 8px rgba(255, 0, 0, 0.85);
+    transform: scale(1.15);
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 10px #e74c3c;
+  }
+
+  50% {
+    box-shadow: 0 0 22px #e74c3c;
+  }
+}
+
+@keyframes glow-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.6;
+  }
+
+  100% {
+    transform: translate(-50%, -50%) scale(2.8);
+    opacity: 0;
+  }
+}
+
+.cluster-marker {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.cluster-marker.dusuk {
+  background: rgba(46, 204, 113, 0.85);
+  box-shadow: 0 0 10px #2ecc71;
+}
+
+.cluster-marker.orta {
+  background: rgba(241, 196, 15, 0.85);
+  box-shadow: 0 0 14px #f1c40f;
+}
+
+@keyframes pulse-glow-cluster {
+
+  0%,
+  100% {
+    box-shadow: 0 0 18px 4px rgba(231, 76, 60, 0.6);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow: 0 0 28px 10px rgba(231, 76, 60, 0.85);
+    transform: scale(1.08);
+  }
+}
+
+.legend {
+  background: rgba(20, 20, 20, 0.85);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  line-height: 1.4;
+}
+
+.legend h4 {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-dot.dusuk {
+  background: #2ecc71;
+}
+
+.legend-dot.orta {
+  background: #f1c40f;
+}
+
+header {
+  background: #111;
+  color: #fff;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+#stat-serit {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.ana-govde {
+  display: flex;
+  height: calc(100vh - 52px);
+  /* header yüksekliğini çıkar */
+}
+
+header {
+  background: #111;
+  color: #fff;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+#filtre-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#filtre-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+#stat-serit {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  color: #ccc;
+  margin-left: auto;
+}
+
+.ana-govde {
+  position: relative;
+  height: calc(100vh - 52px);
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Off-canvas panel --- */
+#filtre-paneli {
+  position: absolute;
+  top: 16px;
+  left: -300px;
+  /* kapalı hâlde ekran dışında */
+  width: 240px;
+  z-index: 1000;
+  background: rgba(20, 20, 20, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  color: #fff;
+  box-sizing: border-box;
+  transition: left 0.3s ease;
+}
+
+#filtre-paneli.acik {
+  left: 16px;
+}
+
+#filtre-paneli h3 {
+  margin-top: 0;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.filtre-grup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* --- Toggle satırı --- */
+.toggle-satir {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.toggle-satir input {
+  display: none;
+  /* gerçek checkbox gizli, görseli biz çiziyoruz */
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.dot.orta {
+  background: #f1c40f;
+  box-shadow: 0 0 6px #f1c40f;
+}
+
+.dot.dusuk {
+  background: #2ecc71;
+  box-shadow: 0 0 6px #2ecc71;
+}
+
+/* --- iOS stili toggle switch --- */
+.toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+
+input:checked+.toggle-switch::before {
+  transform: translateX(16px);
+}
+
+/* Toggle açıkken switch rengi risk rengine döner */
+input[data-risk="orta"]:checked+.toggle-switch {
+  background: rgba(241, 196, 15, 0.6);
+}
+
+input[data-risk="dusuk"]:checked+.toggle-switch {
+  background: rgba(46, 204, 113, 0.6);
+}
+
+#map {
+  flex: 1;
+  height: 100%;
+}
+
+.filtre-sayi {
+  font-size: 10px;
+  color: #888;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+}
+
+/* ============================================
+   POPUP TASARIMI - KOMPAKT
+   ============================================ */
+
+.leaflet-popup-content-wrapper {
+  background: linear-gradient(135deg, #1c1c1c 0%, #0d0d0d 100%);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 0;
+  min-width: 250px;
+  color: #fff;
+}
+
+.leaflet-popup.popup-yuksek .leaflet-popup-content-wrapper {
+  border: 1px solid rgba(231, 76, 60, 0.55);
+  box-shadow: 0 0 26px rgba(231, 76, 60, 0.4), 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+.leaflet-popup.popup-orta .leaflet-popup-content-wrapper {
+  border: 1px solid rgba(241, 196, 15, 0.5);
+  box-shadow: 0 0 26px rgba(241, 196, 15, 0.3), 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+.leaflet-popup.popup-dusuk .leaflet-popup-content-wrapper {
+  border: 1px solid rgba(46, 204, 113, 0.5);
+  box-shadow: 0 0 26px rgba(46, 204, 113, 0.3), 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+.leaflet-popup-content {
+  margin: 0;
+  padding: 0;
+  width: 340px
+}
+
+.leaflet-popup-tip {
+  background: #1a1a1a;
+}
+
+.leaflet-popup-close-button {
+  color: #888 !important;
+  font-size: 16px !important;
+  top: 12px !important;
+  right: 14px !important;
+  padding: 3px !important;
+  opacity: 0.6;
+  transition: all 0.2s;
+}
+
+.leaflet-popup-close-button:hover {
+  opacity: 1;
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+
+/* Header — koyu zemin + renkli rozet, iki satır */
+.popup-header {
+  --risk-color: #e74c3c;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 30px 10px 10px;
+  border-radius: 10px 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.popup-header.risk-orta {
+  --risk-color: #f1c40f;
+}
+
+.popup-header.risk-dusuk {
+  --risk-color: #2ecc71;
+}
+
+.popup-header-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.popup-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.popup-header .header-icon-wrap {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--risk-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.popup-header .header-icon {
+  color: var(--risk-color);
+  width: 16px;
+  height: 16px;
+  filter: drop-shadow(0 0 6px var(--risk-color));
+}
+
+.popup-header .risk-badge {
+  align-self: flex-start;
+  border: 1px solid var(--risk-color);
+  color: var(--risk-color);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.popup-header .popup-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 10.5px;
+  color: #9aa0a6;
+  font-weight: 400;
+}
+
+/* Body */
+.popup-body {
+  padding: 10px;
+}
+
+/* Risk Scores */
+.risk-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.score-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #ecf0f1;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.score-value {
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.score-value.orta {
+  color: #f1c40f;
+}
+
+.score-value.dusuk {
+  color: #58d68d;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.6s ease;
+  background: linear-gradient(90deg, var(--progress-color) 0%, var(--progress-color-light) 100%);
+}
+
+.progress-fill.orta {
+  --progress-color: #f39c12;
+  --progress-color-light: #f1c40f;
+}
+
+.progress-fill.dusuk {
+  --progress-color: #2ecc71;
+  --progress-color-light: #58d68d;
+}
+
+/* Last Update */
+.last-update {
+  text-align: center;
+  font-size: 9.5px;
+  color: #7f8c8d;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Popup açılış animasyonu — .leaflet-popup DEĞİL, content-wrapper'a uygulanıyor.
+   Çünkü Leaflet popup'ın ekran konumunu .leaflet-popup elementinin transform'uyla
+   belirliyor; oraya animasyon transform'u eklersek Leaflet'in konumlamasıyla
+   çakışıp popup'ın "yanlış yerde belirip sonra doğru yere atlaması" hatasına yol açar. */
+.leaflet-popup-content-wrapper {
+  animation: popupSlideIn 0.2s ease-out;
+}
+
+@keyframes popupSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .leaflet-popup-content-wrapper {
+    min-width: 320px;
+  }
+
+  .leaflet-popup-content {
+    width: 280px !important;
+  }
+}
+
+/* --- Kritik risk (artık EN üst dilim — kırmızı) --- */
+.risk-marker.kritik {
+  width: 18px;
+  height: 18px;
+  background: rgba(231, 76, 60, 0.35);
+  box-shadow: 0 0 15px 5px rgba(255, 0, 0, 0.6);
+  animation: pulse-glow 1.2s ease-in-out infinite;
+}
+.risk-marker.kritik::before {
+  background: #e74c3c;
+}
+
+/* --- Yüksek risk (artık ikinci dilim — turuncu) --- */
+.risk-marker.yuksek {
+  width: 17px;
+  height: 17px;
+  background: rgba(232, 89, 12, 0.35);
+  box-shadow: 0 0 13px 4px rgba(232, 89, 12, 0.55);
+}
+.risk-marker.yuksek::before {
+  background: #e8590c;
+}
+
+/* --- Cluster --- */
+.cluster-marker.kritik {
+  background: rgba(231, 76, 60, 0.85);
+  box-shadow: 0 0 18px #e74c3c;
+  animation: pulse-glow-cluster 2.2s ease-in-out infinite;
+}
+.cluster-marker.yuksek {
+  background: rgba(232, 89, 12, 0.85);
+  box-shadow: 0 0 16px #e8590c;
+}
+
+/* --- Legend & filtre paneli noktaları --- */
+.legend-dot.kritik { background: #e74c3c; }
+.legend-dot.yuksek { background: #e8590c; }
+.dot.kritik { background: #e74c3c; box-shadow: 0 0 6px #e74c3c; }
+.dot.yuksek { background: #e8590c; box-shadow: 0 0 6px #e8590c; }
+
+/* --- Toggle switch --- */
+input[data-risk="kritik"]:checked + .toggle-switch { background: rgba(231, 76, 60, 0.6); }
+input[data-risk="yuksek"]:checked + .toggle-switch { background: rgba(232, 89, 12, 0.6); }
+
+/* --- Popup kenarlık/glow --- */
+.leaflet-popup.popup-kritik .leaflet-popup-content-wrapper {
+  border: 1px solid rgba(231, 76, 60, 0.55);
+  box-shadow: 0 0 26px rgba(231, 76, 60, 0.4), 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+.leaflet-popup.popup-yuksek .leaflet-popup-content-wrapper {
+  border: 1px solid rgba(232, 89, 12, 0.6);
+  box-shadow: 0 0 26px rgba(232, 89, 12, 0.4), 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+/* --- Popup header rengi --- */
+.popup-header.risk-kritik { --risk-color: #e74c3c; }
+.popup-header.risk-yuksek {
+  --risk-color: #e8590c;
+}
+
+/* --- Skor rengi + progress bar --- */
+.score-value.kritik { color: #ff6b6b; }
+.score-value.yuksek { color: #e8590c; }
+.progress-fill.kritik { --progress-color: #e74c3c; --progress-color-light: #ff6b6b; }
+.progress-fill.yuksek { --progress-color: #e8590c; --progress-color-light: #ff7b3d; }
+
+.saha-kosullari {
+  margin-bottom: 10px;
+}
+
+.saha-kosullari h4 {
+  color: #9aa0a6;
+  font-size: 9px;
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.saha-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.saha-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.saha-item:nth-child(2n) {
+  border-right: none;
+}
+
+.saha-alt-satir {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.saha-ust {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.saha-icon {
+  width: 11px;
+  height: 11px;
+  color: #9aa0a6;
+  flex-shrink: 0;
+}
+
+.saha-label {
+  font-size: 8px;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+
+.saha-value {
+  font-size: 11px;
+  color: #ecf0f1;
+  font-weight: 700;
+}
+
+/* --- Veri eksik/geçersiz --- */
+.risk-marker.veri-yok {
+  width: 14px;
+  height: 14px;
+  background: rgba(149, 165, 166, 0.35);
+  box-shadow: 0 0 8px 3px rgba(149, 165, 166, 0.5);
+}
+.risk-marker.veri-yok::before {
+  background: #95a5a6;
+}
+
+.cluster-marker.veri-yok {
+  background: rgba(149, 165, 166, 0.85);
+  box-shadow: 0 0 10px #95a5a6;
+}

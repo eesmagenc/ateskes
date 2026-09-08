@@ -15,3 +15,10 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+
+# Frontend (Sude)
+frontend/config.js
+
+# Backend (SQLite veritabanı)
+*.db
