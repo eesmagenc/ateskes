@@ -2,12 +2,15 @@ from fastapi import FastAPI
 import requests
 import math
 import os
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 app = FastAPI(title="AteşKes API", version="1.0.0")
 
 # --- YARDIMCI FONKSİYONLAR ---
+
 
 def hava_verisi_cek(lat, lon):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -80,71 +83,80 @@ def root():
 def saglik():
     return {"durum": "✅ API çalışıyor"}
 
+@app.get("/debug")
+def debug():
+    key = os.getenv("MAP_KEY")
+    return {"MAP_KEY": key}
+
+@app.get("/debug-firms")
+def debug_firms():
+    key = os.getenv("MAP_KEY")
+    # Türkiye bbox: 36,26,42,45
+    url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{key}/MODIS_NRT/26,36,45,42/1"
+    r = requests.get(url)
+    return {
+        "url": url,
+        "status_code": r.status_code,
+        "ilk_100_karakter": r.text[:100]
+    }
+
 @app.get("/yangin-noktalari")
-def yangin_noktalari():
-    # Muğla bölgesi FIRMS verisi
+def yangin_noktalari(
+    min_risk: float = 0.0,
+    max_risk: float = 1.0
+):
     MAP_KEY = os.getenv("MAP_KEY")
-    BBOX = "25.0,36.0,45.0,42.0"
-
-    url = (
-        f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/"
-        f"{MAP_KEY}/VIIRS_NOAA20_NRT/{BBOX}/1"
-    )
-
+    url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/MODIS_NRT/26,36,45,42/1"
     r = requests.get(url)
     if r.status_code != 200:
-        return {"hata": "FIRMS verisi çekilemedi"}
+        return {"hata": "FIRMS verisi alinamadi"}
 
     satirlar = r.text.strip().split("\n")
-    if len(satirlar) <= 1:
-        return {"mesaj": "Şu an aktif yangın noktası yok", "veri": []}
-
-    import csv, io
-    reader = csv.DictReader(io.StringIO(r.text))
+    basliklar = satirlar[0].split(",")
     sonuclar = []
 
-    for satir in reader:
+    for satir in satirlar[1:]:
+        degerler = satir.split(",")
+        if len(degerler) < 2:
+            continue
         try:
-            lat = float(satir["latitude"])
-            lon = float(satir["longitude"])
-
-            # Hava verisi
-            hava = hava_verisi_cek(lat, lon)
-            if not hava:
-                continue
-
-            # Yükseklik ve eğim
-            yukseklik = yukseklik_cek(lat, lon)
-            egim = egim_hesapla(yukseklik) if yukseklik else 0.0
-            yukseklik_m = yukseklik["merkez"] if yukseklik else 0.0
-
-            # Risk skoru
-            risk = risk_skoru_hesapla(
-                hava["sicaklik"],
-                hava["ruzgar_hizi"],
-                hava["nem"],
-                egim
-            )
-
-            sonuclar.append({
-                "bolge_id": f"nokta_{len(sonuclar)+1}",
-                "lat": lat,
-                "lon": lon,
-                "risk_skoru": risk,
-                "sicaklik": hava["sicaklik"],
-                "ruzgar_hizi": hava["ruzgar_hizi"],
-                "ruzgar_yonu": hava["ruzgar_yonu"],
-                "nem": hava["nem"],
-                "yukseklik_metre": yukseklik_m,
-                "egim_derece": egim,
-                "acq_date": satir.get("acq_date", ""),
-                "confidence": satir.get("confidence", "")
-            })
-
-        except Exception as e:
+            lat = float(degerler[basliklar.index("latitude")])
+            lon = float(degerler[basliklar.index("longitude")])
+            confidence = degerler[basliklar.index("confidence")] if "confidence" in basliklar else ""
+            acq_date = degerler[basliklar.index("acq_date")] if "acq_date" in basliklar else ""
+        except:
             continue
 
-    return {
-        "toplam_nokta": len(sonuclar),
-        "veri": sonuclar
-    }
+        hava = hava_verisi_cek(lat, lon)
+        if hava is None:
+            continue
+
+        yukseklikler = yukseklik_cek(lat, lon)
+        if yukseklikler is None:
+            continue
+
+        egim = egim_hesapla(yukseklikler)
+        risk = risk_skoru_hesapla(
+            hava["sicaklik"], hava["ruzgar_hizi"],
+            hava["nem"], egim
+        )
+
+        if risk < min_risk or risk > max_risk:
+            continue
+
+        sonuclar.append({
+            "bolge_id": f"nokta_{len(sonuclar)+1}",
+            "lat": lat,
+            "lon": lon,
+            "risk_skoru": risk,
+            "sicaklik": hava["sicaklik"],
+            "ruzgar_hizi": hava["ruzgar_hizi"],
+            "ruzgar_yonu": hava["ruzgar_yonu"],
+            "nem": hava["nem"],
+            "yukseklik_metre": yukseklikler["merkez"],
+            "egim_derece": egim,
+            "acq_date": acq_date,
+            "confidence": confidence
+        })
+
+    return {"toplam_nokta": len(sonuclar), "veri": sonuclar}
