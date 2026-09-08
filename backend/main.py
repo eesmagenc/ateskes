@@ -65,13 +65,24 @@ def egim_hesapla(yukseklikler, aralik=100):
     return round(math.degrees(math.atan(max(farklar) / aralik)), 1)
 
 def risk_skoru_hesapla(sicaklik, ruzgar_hizi, nem, egim_derece):
+    # Normalize (0-1 arasına çek)
+    sicaklik_norm    = min(max((sicaklik - 10) / 50, 0), 1)   # 10-60°C arası
+    ruzgar_norm      = min(max(ruzgar_hizi / 80, 0), 1)        # 0-80 km/h arası
+    nem_norm         = min(max((100 - nem) / 100, 0), 1)       # düşük nem = yüksek risk
+    egim_norm        = min(max(egim_derece / 45, 0), 1)        # 0-45 derece arası
+
+    # Etkileşim faktörü: sıcak + rüzgarlı = çok tehlikeli
+    etkilesim = sicaklik_norm * ruzgar_norm
+
     risk = (
-        sicaklik    * 0.25 +
-        ruzgar_hizi * 0.25 -
-        nem         * 0.15 +
-        egim_derece * 0.35
+        sicaklik_norm * 0.25 +
+        ruzgar_norm   * 0.25 +
+        nem_norm      * 0.20 +
+        egim_norm     * 0.15 +
+        etkilesim     * 0.15
     )
-    return round(min(max(risk / 100, 0), 1), 3)
+
+    return round(min(max(risk, 0), 1), 3)
 
 # --- ENDPOINTS ---
 
@@ -103,7 +114,8 @@ def debug_firms():
 @app.get("/yangin-noktalari")
 def yangin_noktalari(
     min_risk: float = 0.0,
-    max_risk: float = 1.0
+    max_risk: float = 1.0,
+    limit: int = 5
 ):
     MAP_KEY = os.getenv("MAP_KEY")
     url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/MODIS_NRT/26,36,45,42/1"
@@ -116,6 +128,8 @@ def yangin_noktalari(
     sonuclar = []
 
     for satir in satirlar[1:]:
+        if len(sonuclar) >= limit:  # limit kadar nokta yeterli
+            break
         degerler = satir.split(",")
         if len(degerler) < 2:
             continue
