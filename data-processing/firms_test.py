@@ -2,7 +2,10 @@ import requests
 import pandas as pd
 import os
 from dotenv import load_dotenv
-load_dotenv()
+from pathlib import Path
+
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
+
 MAP_KEY = os.getenv("MAP_KEY")
 
 # Türkiye koordinatları (batı,güney,doğu,kuzey)
