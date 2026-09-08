@@ -1,134 +1,128 @@
-from fastapi import FastAPI
+import os
+import sqlite3
 import requests
 import math
-import os
-from pathlib import Path
+import sys
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
+# hesaplamalar.py'yi data-processing klasöründen import et
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'data-processing'))
+from hesaplamalar import egim_hesapla, risk_skoru, oncelik_skoru, tahliye_skoru
 
-app = FastAPI(title="AteşKes API", version="1.0.0")
+load_dotenv()
+app = FastAPI()
 
-# --- YARDIMCI FONKSİYONLAR ---
+# -----------------------------------------------------------------------
+# CORS AYARI — Sudenur'un frontend'i backend'e bağlanabilsin
+# -----------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# -----------------------------------------------------------------------
+# VERİTABANI
+# -----------------------------------------------------------------------
+def veritabani_baglan():
+    conn = sqlite3.connect("veriler.db")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bolgeler (
+            bolge_id TEXT PRIMARY KEY,
+            lat REAL, lon REAL,
+            risk_skoru REAL, oncelik_skoru REAL, tahliye_skoru REAL,
+            yukseklik_metre REAL, egim_derece REAL,
+            guncelleme_zamani TEXT
+        )
+    """)
+    conn.commit()
+    return conn
 
+# -----------------------------------------------------------------------
+# YARDIMCI FONKSİYONLAR
+# -----------------------------------------------------------------------
 def hava_verisi_cek(lat, lon):
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "current": [
-            "temperature_2m",
-            "windspeed_10m",
-            "winddirection_10m",
-            "relativehumidity_2m"
-        ],
-        "timezone": "Europe/Istanbul"
-    }
-    r = requests.get(url, params=params)
-    if r.status_code == 200:
+    try:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
+        }
+        r = requests.get(url, params=params, timeout=10)
         c = r.json()["current"]
         return {
             "sicaklik": c["temperature_2m"],
-            "ruzgar_hizi": c["windspeed_10m"],
-            "ruzgar_yonu": c["winddirection_10m"],
-            "nem": c["relativehumidity_2m"]
+            "nem": c["relative_humidity_2m"],
+            "ruzgar_hizi": c["wind_speed_10m"],
+            "ruzgar_yonu": c["wind_direction_10m"]
         }
-    return None
+    except:
+        return None
 
 def yukseklik_cek(lat, lon):
-    url = "https://api.opentopodata.org/v1/srtm30m"
-    offset = 0.0009
-    noktalar = [
-        (lat, lon),
-        (lat + offset, lon),
-        (lat - offset, lon),
-        (lat, lon + offset),
-        (lat, lon - offset),
-    ]
-    locations = "|".join(f"{n[0]},{n[1]}" for n in noktalar)
-    r = requests.get(url, params={"locations": locations})
-    if r.status_code == 200:
-        s = r.json()["results"]
+    try:
+        offset = 0.0009
+        noktalar = f"{lat},{lon}|{lat+offset},{lon}|{lat-offset},{lon}|{lat},{lon+offset}|{lat},{lon-offset}"
+        url = f"https://api.opentopodata.org/v1/srtm30m?locations={noktalar}"
+        r = requests.get(url, timeout=10)
+        sonuclar = r.json()["results"]
         return {
-            "merkez": s[0]["elevation"],
-            "kuzey" : s[1]["elevation"],
-            "guney" : s[2]["elevation"],
-            "dogu"  : s[3]["elevation"],
-            "bati"  : s[4]["elevation"],
+            "merkez": sonuclar[0]["elevation"],
+            "kuzey":  sonuclar[1]["elevation"],
+            "guney":  sonuclar[2]["elevation"],
+            "dogu":   sonuclar[3]["elevation"],
+            "bati":   sonuclar[4]["elevation"],
         }
-    return None
+    except:
+        return None
 
-def egim_hesapla(yukseklikler, aralik=100):
-    merkez = yukseklikler["merkez"]
-    farklar = [abs(merkez - yukseklikler[y]) for y in ["kuzey","guney","dogu","bati"]]
-    return round(math.degrees(math.atan(max(farklar) / aralik)), 1)
+def db_den_yukseklik_getir(bolge_id, conn):
+    row = conn.execute(
+        "SELECT yukseklik_metre, egim_derece FROM bolgeler WHERE bolge_id=?", (bolge_id,)
+    ).fetchone()
+    return row  # (yukseklik_metre, egim_derece) ya da None
 
-def risk_skoru_hesapla(sicaklik, ruzgar_hizi, nem, egim_derece):
-    # Normalize (0-1 arasına çek)
-    sicaklik_norm    = min(max((sicaklik - 10) / 50, 0), 1)   # 10-60°C arası
-    ruzgar_norm      = min(max(ruzgar_hizi / 80, 0), 1)        # 0-80 km/h arası
-    nem_norm         = min(max((100 - nem) / 100, 0), 1)       # düşük nem = yüksek risk
-    egim_norm        = min(max(egim_derece / 45, 0), 1)        # 0-45 derece arası
+def son_guncelleme_eskimi(bolge_id, conn, dakika=30):
+    row = conn.execute(
+        "SELECT guncelleme_zamani FROM bolgeler WHERE bolge_id=?", (bolge_id,)
+    ).fetchone()
+    if row is None or row[0] is None:
+        return True
+    son = datetime.fromisoformat(row[0])
+    return datetime.utcnow() - son > timedelta(minutes=dakika)
 
-    # Etkileşim faktörü: sıcak + rüzgarlı = çok tehlikeli
-    etkilesim = sicaklik_norm * ruzgar_norm
-
-    risk = (
-        sicaklik_norm * 0.25 +
-        ruzgar_norm   * 0.25 +
-        nem_norm      * 0.20 +
-        egim_norm     * 0.15 +
-        etkilesim     * 0.15
-    )
-
-    return round(min(max(risk, 0), 1), 3)
-
-# --- ENDPOINTS ---
-
+# -----------------------------------------------------------------------
+# ENDPOİNTLER
+# -----------------------------------------------------------------------
 @app.get("/")
-def root():
+def ana_sayfa():
     return {"durum": "calisiyor", "proje": "AteşKes"}
 
 @app.get("/saglik")
 def saglik():
     return {"durum": "✅ API çalışıyor"}
 
-@app.get("/debug")
-def debug():
-    key = os.getenv("MAP_KEY")
-    return {"MAP_KEY": key}
-
-@app.get("/debug-firms")
-def debug_firms():
-    key = os.getenv("MAP_KEY")
-    # Türkiye bbox: 36,26,42,45
-    url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{key}/MODIS_NRT/26,36,45,42/1"
-    r = requests.get(url)
-    return {
-        "url": url,
-        "status_code": r.status_code,
-        "ilk_100_karakter": r.text[:100]
-    }
-
-@app.get("/yangin-noktalari")
-def yangin_noktalari(
-    min_risk: float = 0.0,
-    max_risk: float = 1.0,
-    limit: int = 5
-):
+@app.get("/bolgeler")
+def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0):
     MAP_KEY = os.getenv("MAP_KEY")
     url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/MODIS_NRT/26,36,45,42/1"
-    r = requests.get(url)
+    r = requests.get(url, timeout=30)
     if r.status_code != 200:
         return {"hata": "FIRMS verisi alinamadi"}
 
     satirlar = r.text.strip().split("\n")
     basliklar = satirlar[0].split(",")
     sonuclar = []
+    conn = veritabani_baglan()
 
     for satir in satirlar[1:]:
-        if len(sonuclar) >= limit:  # limit kadar nokta yeterli
+        if len(sonuclar) >= limit:
             break
         degerler = satir.split(",")
         if len(degerler) < 2:
@@ -136,41 +130,86 @@ def yangin_noktalari(
         try:
             lat = float(degerler[basliklar.index("latitude")])
             lon = float(degerler[basliklar.index("longitude")])
-            confidence = degerler[basliklar.index("confidence")] if "confidence" in basliklar else ""
             acq_date = degerler[basliklar.index("acq_date")] if "acq_date" in basliklar else ""
+            confidence = degerler[basliklar.index("confidence")] if "confidence" in basliklar else ""
         except:
             continue
 
-        hava = hava_verisi_cek(lat, lon)
-        if hava is None:
-            continue
+        bolge_id = f"nokta_{lat}_{lon}"
 
-        yukseklikler = yukseklik_cek(lat, lon)
-        if yukseklikler is None:
-            continue
+        # --- Yükseklik/eğim: DB'de varsa tekrar çekme (sabit coğrafya) ---
+        cached = db_den_yukseklik_getir(bolge_id, conn)
+        if cached:
+            yukseklik_metre, egim_derece = cached
+        else:
+            yukseklikler = yukseklik_cek(lat, lon)
+            if yukseklikler is None:
+                continue
+            yukseklik_metre = yukseklikler["merkez"]
+            egim_derece = egim_hesapla(yukseklikler)
 
-        egim = egim_hesapla(yukseklikler)
-        risk = risk_skoru_hesapla(
-            hava["sicaklik"], hava["ruzgar_hizi"],
-            hava["nem"], egim
-        )
+        # --- Hava: 30 dakikada bir güncelle ---
+        if son_guncelleme_eskimi(bolge_id, conn, dakika=30):
+            hava = hava_verisi_cek(lat, lon)
+            if hava is None:
+                continue
+            risk = risk_skoru(hava["sicaklik"], hava["ruzgar_hizi"], hava["nem"], egim_derece)
+            oncelik = 0.7  # FIRMS noktaları için varsayılan
+            tahliye = tahliye_skoru(risk, oncelik)
+
+            conn.execute("""
+                INSERT INTO bolgeler
+                    (bolge_id, lat, lon, risk_skoru, oncelik_skoru, tahliye_skoru,
+                     yukseklik_metre, egim_derece, guncelleme_zamani)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(bolge_id) DO UPDATE SET
+                    risk_skoru=excluded.risk_skoru,
+                    oncelik_skoru=excluded.oncelik_skoru,
+                    tahliye_skoru=excluded.tahliye_skoru,
+                    yukseklik_metre=excluded.yukseklik_metre,
+                    egim_derece=excluded.egim_derece,
+                    guncelleme_zamani=excluded.guncelleme_zamani
+            """, (bolge_id, lat, lon, risk, oncelik, tahliye,
+                  yukseklik_metre, egim_derece, datetime.utcnow().isoformat()))
+            conn.commit()
+        else:
+            row = conn.execute(
+                "SELECT risk_skoru, oncelik_skoru, tahliye_skoru FROM bolgeler WHERE bolge_id=?",
+                (bolge_id,)
+            ).fetchone()
+            risk, oncelik, tahliye = row
+            hava = hava_verisi_cek(lat, lon)
 
         if risk < min_risk or risk > max_risk:
             continue
 
         sonuclar.append({
-            "bolge_id": f"nokta_{len(sonuclar)+1}",
+            "bolge_id": bolge_id,
             "lat": lat,
             "lon": lon,
-            "risk_skoru": risk,
-            "sicaklik": hava["sicaklik"],
-            "ruzgar_hizi": hava["ruzgar_hizi"],
-            "ruzgar_yonu": hava["ruzgar_yonu"],
-            "nem": hava["nem"],
-            "yukseklik_metre": yukseklikler["merkez"],
-            "egim_derece": egim,
+            "risk_skoru": round(risk, 3),
+            "oncelik_skoru": oncelik,
+            "tahliye_skoru": tahliye,
+            "sicaklik": hava["sicaklik"] if hava else None,
+            "ruzgar_hizi": hava["ruzgar_hizi"] if hava else None,
+            "ruzgar_yonu": hava["ruzgar_yonu"] if hava else None,
+            "nem": hava["nem"] if hava else None,
+            "yukseklik_metre": yukseklik_metre,
+            "egim_derece": egim_derece,
             "acq_date": acq_date,
             "confidence": confidence
         })
 
+    conn.close()
     return {"toplam_nokta": len(sonuclar), "veri": sonuclar}
+
+@app.get("/debug-firms")
+def debug_firms():
+    key = os.getenv("MAP_KEY")
+    url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{key}/MODIS_NRT/26,36,45,42/1"
+    r = requests.get(url)
+    return {
+        "url": url,
+        "status_code": r.status_code,
+        "ilk_100_karakter": r.text[:100]
+    }
