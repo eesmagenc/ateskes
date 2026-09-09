@@ -1,7 +1,7 @@
 
 const map = L.map('map').setView([37.2153, 28.3636], 10);
 
-L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_31bb_1_b53b43996e67049c65f76f0c', {
   attribution: '&copy; OpenStreetMap katkıda bulunanlar &copy; CARTO',
   subdomains: 'abcd',
   maxZoom: 19

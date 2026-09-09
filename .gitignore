@@ -17,8 +17,5 @@ node_modules/
 Thumbs.db
 
 
-# Frontend (Sude)
-frontend/config.js
-
 # Backend (SQLite veritabanı)
 *.db
