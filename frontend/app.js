@@ -27,8 +27,8 @@ function riskKategori(risk) {
     console.warn("risk_skoru eksik/geçersiz geldi, 'veri-yok' olarak işaretlendi:", risk);
     return "veri-yok";
   }
-  if (risk < 0.3) return "dusuk";
-  if (risk < 0.6) return "orta";
+  if (risk < 0.2) return "dusuk";
+  if (risk < 0.5) return "orta";
   if (risk < 0.8) return "yuksek";
   return "kritik";
 }
