@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AteşKes — Risk Haritası</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header>
+        <button id="filtre-toggle" aria-label="Filtreler">☰ Filtreler</button>
+        <h1>AteşKes</h1>
+        <div id="stat-serit">
+            <span>Toplam Bölge: <strong id="stat-toplam">-</strong></span>
+            <span>Kritik Riskli: <strong id="stat-kritik">-</strong></span>
+        </div>
+    </header>
+
+    <div class="ana-govde">
+        <aside id="filtre-paneli">
+            <h3>Filtreler</h3>
+
+            <div class="filtre-grup">
+                <label class="toggle-satir">
+                <span><span class="dot kritik"></span> Kritik Risk <span class="filtre-sayi"
+                        id="sayi-kritik">0</span></span>
+                <input type="checkbox" checked data-risk="kritik">
+                <span class="toggle-switch"></span>
+                </label>
+                <label class="toggle-satir">
+                    <span><span class="dot yuksek"></span> Yüksek Risk <span class="filtre-sayi"
+                            id="sayi-yuksek">0</span></span>
+                    <input type="checkbox" checked data-risk="yuksek">
+                    <span class="toggle-switch"></span>
+                </label>
+                <label class="toggle-satir">
+                    <span><span class="dot orta"></span> Orta Risk <span class="filtre-sayi"
+                            id="sayi-orta">0</span></span>
+                    <input type="checkbox" checked data-risk="orta">
+                    <span class="toggle-switch"></span>
+                </label>
+                <label class="toggle-satir">
+                    <span><span class="dot dusuk"></span> Düşük Risk <span class="filtre-sayi"
+                            id="sayi-dusuk">0</span></span>
+                    <input type="checkbox" checked data-risk="dusuk">
+                    <span class="toggle-switch"></span>
+                </label>
+            </div>
+
+            <!-- Hastane/okul çevresi filtresi kaldırıldı — Hafta 15'te
+                 "kritik alanlar" ayrı liste + marker olarak geri gelecek,
+                 tek boolean (yakin_kurum) yerine isim/tür/mesafe içeren
+                 bir veri yapısı gerekecek. -->
+
+            <!-- Hafta 3'te zaman aralığı slider'ı eklenecek -->
+        </aside>
+
+        <div id="map"></div>
+    </div>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="config.js"></script>
+    <script src="mockData.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
