@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import requests
-import math
 import sys
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -10,13 +9,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # hesaplamalar.py'yi data-processing klasöründen import et
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'data-processing'))
-from hesaplamalar import egim_hesapla, risk_skoru, oncelik_skoru, tahliye_skoru
+from hesaplamalar import (
+    egim_hesapla, egim_yonu_belirle,
+    risk_skoru, oncelik_skoru, tahliye_skoru,
+    ruzgar_egime_uyumlu_mu, yayilma_hizi_belirle
+)
 
 load_dotenv()
 app = FastAPI()
 
 # -----------------------------------------------------------------------
-# CORS AYARI — Sudenur'un frontend'i backend'e bağlanabilsin
+# CORS AYARI
 # -----------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
@@ -27,7 +30,7 @@ app.add_middleware(
 )
 
 # -----------------------------------------------------------------------
-# VERİTABANI
+# VERİTABANI — Sudenur'un şemasıyla uyumlu (11 sütun)
 # -----------------------------------------------------------------------
 def veritabani_baglan():
     conn = sqlite3.connect("veriler.db")
@@ -36,12 +39,24 @@ def veritabani_baglan():
             bolge_id TEXT PRIMARY KEY,
             lat REAL, lon REAL,
             risk_skoru REAL, oncelik_skoru REAL, tahliye_skoru REAL,
+            yangin_yonu_derece REAL, yayilma_hizi TEXT,
             yukseklik_metre REAL, egim_derece REAL,
             guncelleme_zamani TEXT
         )
     """)
     conn.commit()
     return conn
+
+def bolge_ekle(conn, bolge):
+    conn.execute(
+        "INSERT OR REPLACE INTO bolgeler VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (bolge["bolge_id"], bolge["lat"], bolge["lon"], bolge["risk_skoru"],
+         bolge["oncelik_skoru"], bolge["tahliye_skoru"],
+         bolge["yangin_yonu_derece"], bolge["yayilma_hizi"],
+         bolge["yukseklik_metre"], bolge["egim_derece"],
+         bolge["guncelleme_zamani"])
+    )
+    conn.commit()
 
 # -----------------------------------------------------------------------
 # YARDIMCI FONKSİYONLAR
@@ -84,13 +99,15 @@ def yukseklik_cek(lat, lon):
 
 def db_den_yukseklik_getir(bolge_id, conn):
     row = conn.execute(
-        "SELECT yukseklik_metre, egim_derece FROM bolgeler WHERE bolge_id=?", (bolge_id,)
+        "SELECT yukseklik_metre, egim_derece FROM bolgeler WHERE bolge_id=?",
+        (bolge_id,)
     ).fetchone()
-    return row  # (yukseklik_metre, egim_derece) ya da None
+    return row
 
 def son_guncelleme_eskimi(bolge_id, conn, dakika=30):
     row = conn.execute(
-        "SELECT guncelleme_zamani FROM bolgeler WHERE bolge_id=?", (bolge_id,)
+        "SELECT guncelleme_zamani FROM bolgeler WHERE bolge_id=?",
+        (bolge_id,)
     ).fetchone()
     if row is None or row[0] is None:
         return True
@@ -137,10 +154,11 @@ def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0
 
         bolge_id = f"nokta_{lat}_{lon}"
 
-        # --- Yükseklik/eğim: DB'de varsa tekrar çekme (sabit coğrafya) ---
+        # --- Yükseklik/eğim: DB'de varsa tekrar çekme ---
         cached = db_den_yukseklik_getir(bolge_id, conn)
         if cached:
             yukseklik_metre, egim_derece = cached
+            yukseklikler = None
         else:
             yukseklikler = yukseklik_cek(lat, lon)
             if yukseklikler is None:
@@ -153,31 +171,40 @@ def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0
             hava = hava_verisi_cek(lat, lon)
             if hava is None:
                 continue
-            risk = risk_skoru(hava["sicaklik"], hava["ruzgar_hizi"], hava["nem"], egim_derece)
-            oncelik = 0.7  # FIRMS noktaları için varsayılan
-            tahliye = tahliye_skoru(risk, oncelik)
 
-            conn.execute("""
-                INSERT INTO bolgeler
-                    (bolge_id, lat, lon, risk_skoru, oncelik_skoru, tahliye_skoru,
-                     yukseklik_metre, egim_derece, guncelleme_zamani)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(bolge_id) DO UPDATE SET
-                    risk_skoru=excluded.risk_skoru,
-                    oncelik_skoru=excluded.oncelik_skoru,
-                    tahliye_skoru=excluded.tahliye_skoru,
-                    yukseklik_metre=excluded.yukseklik_metre,
-                    egim_derece=excluded.egim_derece,
-                    guncelleme_zamani=excluded.guncelleme_zamani
-            """, (bolge_id, lat, lon, risk, oncelik, tahliye,
-                  yukseklik_metre, egim_derece, datetime.utcnow().isoformat()))
-            conn.commit()
+            # Eğim yönü hesapla
+            if yukseklikler:
+                egim_yonu = egim_yonu_belirle(yukseklikler)
+            else:
+                egim_yonu = "kuzey"  # DB'den gelince varsayılan
+
+            # Sultan'ın fonksiyonları
+            risk = risk_skoru(hava["sicaklik"], hava["ruzgar_hizi"], hava["nem"], egim_derece)
+            oncelik = 0.7
+            tahliye = tahliye_skoru(risk, oncelik)
+            uyumlu = ruzgar_egime_uyumlu_mu(hava["ruzgar_yonu"], egim_yonu)
+            yayilma = yayilma_hizi_belirle(hava["ruzgar_hizi"], egim_derece, uyumlu)
+
+            bolge_ekle(conn, {
+                "bolge_id": bolge_id,
+                "lat": lat,
+                "lon": lon,
+                "risk_skoru": round(risk, 3),
+                "oncelik_skoru": oncelik,
+                "tahliye_skoru": tahliye,
+                "yangin_yonu_derece": hava["ruzgar_yonu"],
+                "yayilma_hizi": yayilma,
+                "yukseklik_metre": yukseklik_metre,
+                "egim_derece": egim_derece,
+                "guncelleme_zamani": datetime.utcnow().isoformat()
+            })
+
         else:
             row = conn.execute(
-                "SELECT risk_skoru, oncelik_skoru, tahliye_skoru FROM bolgeler WHERE bolge_id=?",
+                "SELECT risk_skoru, oncelik_skoru, tahliye_skoru, yangin_yonu_derece, yayilma_hizi FROM bolgeler WHERE bolge_id=?",
                 (bolge_id,)
             ).fetchone()
-            risk, oncelik, tahliye = row
+            risk, oncelik, tahliye, yangin_yonu_derece, yayilma = row
             hava = hava_verisi_cek(lat, lon)
 
         if risk < min_risk or risk > max_risk:
@@ -190,6 +217,8 @@ def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0
             "risk_skoru": round(risk, 3),
             "oncelik_skoru": oncelik,
             "tahliye_skoru": tahliye,
+            "yangin_yonu_derece": hava["ruzgar_yonu"] if hava else None,
+            "yayilma_hizi": yayilma,
             "sicaklik": hava["sicaklik"] if hava else None,
             "ruzgar_hizi": hava["ruzgar_hizi"] if hava else None,
             "ruzgar_yonu": hava["ruzgar_yonu"] if hava else None,
