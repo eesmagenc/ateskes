@@ -107,6 +107,27 @@ def yayilma_hizi_belirle(ruzgar_hizi, egim_derece, ruzgar_yonu_egime_uyumlu):
     return "hizli"
 
 
+def egim_cezasi(egim_derece):
+    """A* rota maliyetine eklenen ceza — çok dik yollardan ekipleri kaçırır."""
+    if egim_derece < 10:
+        return 0
+    elif egim_derece < 20:
+        return 5
+    elif egim_derece < 30:
+        return 15
+    return 30
+
+
+def cost_hesapla(risk, yayilma_riski, mesafe, oncelik, zaman, erisilebilirlik, egim_derece):
+    """Bir yol segmentinin A* maliyeti.
+    Cost = Risk + Yayılım Riski + Mesafe − Öncelik + Zaman + Erişilebilirlik + Eğim Cezası"""
+    return (
+        risk + yayilma_riski + mesafe
+        - oncelik + zaman + erisilebilirlik
+        + egim_cezasi(egim_derece)
+    )
+
+
 def bolge_oncelik_belirle(lat, lon, kritik_alanlar, maks_mesafe_metre=None):
     """/bolgeler endpoint'i için tek çağrıda gerçek öncelik skoru.
 
