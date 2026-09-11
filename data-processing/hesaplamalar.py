@@ -105,3 +105,98 @@ def yayilma_hizi_belirle(ruzgar_hizi, egim_derece, ruzgar_yonu_egime_uyumlu):
     elif hiz_puani < 60:
         return "orta"
     return "hizli"
+
+
+def bolge_oncelik_belirle(lat, lon, kritik_alanlar, maks_mesafe_metre=None):
+    """/bolgeler endpoint'i için tek çağrıda gerçek öncelik skoru.
+
+    en_yakin_kritik_alan() + oncelik_skoru()'nu sarmalar; backend tarafında
+    sabit bir varsayım (örn. oncelik = 0.7) yazmak yerine bunu kullanın.
+
+    kritik_alanlar: [{"lat":.., "lon":.., "tip":"hastane"|"okul"|"huzurevi"|"koy", ...}, ...]
+    maks_mesafe_metre: verilirse, en yakın kritik alan bu mesafeden uzaksa
+        (örn. tenha bir bölgede yangın) varsayılan öncelik döner — hastane/okul
+        yakınında olmayan bir noktayı yanlışlıkla "hastane önceliğiyle" etiketlemez.
+
+    Döner: (oncelik_skoru, en_yakin_alan | None, mesafe_metre | None)
+    kritik_alanlar boşsa veya hiç eşleşme yoksa: (0.5, None, None) — nötr varsayılan.
+    """
+    alan, mesafe = en_yakin_kritik_alan(lat, lon, kritik_alanlar)
+    if alan is None:
+        return 0.5, None, None
+    if maks_mesafe_metre is not None and mesafe > maks_mesafe_metre:
+        return 0.5, None, mesafe
+    return oncelik_skoru(alan["tip"]), alan, mesafe
+
+
+# ---------------------------------------------------------------------------
+# Hafta 1 — OSM'den kritik alan çekme (network I/O)
+# ---------------------------------------------------------------------------
+# Not: hesaplamalar.py'nin geri kalanı saf fonksiyonlardır; bu iki fonksiyon
+# istisna çünkü Esma'nın backend'inin kritik alan listesini nereden alacağını
+# ayrı ayrı yazmasına gerek kalmasın diye buraya taşındı (Hafta 1 notebook'ta
+# test edilen sorgunun aynısı).
+
+_OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+_OVERPASS_HEADERS = {"User-Agent": "AtesKesProject/1.0 (Biz Teknopark on kuluçka)"}
+_OSM_TIP_ESLEME = {"hospital": "hastane", "school": "okul", "nursing_home": "huzurevi", "village": "koy"}
+
+
+def osm_kritik_alanlari_cek(il_adi="Muğla", limit=30, deneme_sayisi=4):
+    """Overpass API'den hastane/okul/huzurevi/köy noktalarını çeker.
+
+    Genel Overpass sunucusu zaman zaman 504 (gateway timeout) dönebiliyor;
+    bu yüzden birkaç deneme yapılıyor. Sonuç çeşitlilik için tiplere göre
+    sırayla dağıtılır (hepsi aynı tip olmasın diye).
+
+    Döner: [{"isim":.., "tip":"hastane"|"okul"|"huzurevi"|"koy", "lat":.., "lon":..}, ...]
+    """
+    import time
+    import requests
+
+    sorgu = f"""
+    [out:json][timeout:60];
+    area["name"="{il_adi}"]["admin_level"="4"]->.aranan;
+    (
+      node["amenity"="hospital"](area.aranan);
+      node["amenity"="school"](area.aranan);
+      node["amenity"="nursing_home"](area.aranan);
+      node["place"="village"](area.aranan);
+    );
+    out center;
+    """
+    son_hata = None
+    for deneme in range(deneme_sayisi):
+        try:
+            r = requests.post(_OVERPASS_URL, data={"data": sorgu}, headers=_OVERPASS_HEADERS, timeout=90)
+            r.raise_for_status()
+            break
+        except requests.exceptions.HTTPError as e:
+            son_hata = e
+            time.sleep(5)
+    else:
+        raise son_hata
+
+    elemanlar = r.json()["elements"]
+    tip_gruplari = {}
+    for e in elemanlar:
+        tip = e["tags"].get("amenity") or e["tags"].get("place")
+        tip_tr = _OSM_TIP_ESLEME.get(tip, tip)
+        tip_gruplari.setdefault(tip_tr, []).append({
+            "isim": e["tags"].get("name", "isimsiz"),
+            "tip": tip_tr,
+            "lat": e["lat"],
+            "lon": e["lon"],
+        })
+
+    sonuc = []
+    tur_listeleri = list(tip_gruplari.values())
+    i = 0
+    while len(sonuc) < limit and any(tur_listeleri):
+        tur = tur_listeleri[i % len(tur_listeleri)]
+        if tur:
+            sonuc.append(tur.pop(0))
+        i += 1
+        if i > limit * 10:
+            break
+    return sonuc[:limit]
