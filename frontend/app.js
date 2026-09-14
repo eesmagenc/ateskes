@@ -64,6 +64,15 @@ const clusterGrup = L.markerClusterGroup({
       iconSize: [40, 40],
       iconAnchor: [20, 20]
     });
+  },
+  // Hover'da gösterilen kapsama alanının stili — dolgu şeffaf, sadece
+  // ince mavi bir kenar çizgisi kalsın.
+  polygonOptions: {
+    fillColor: "#94a3b8",
+    fillOpacity: 0.12,
+    color: "#94a3b8",
+    weight: 1.5,
+    opacity: 0.7
   }
 });
 
@@ -128,6 +137,10 @@ function bolgeleriHaritayaYukle(bolgeler) {
 
   geojsonKatmani.eachLayer(layer => clusterGrup.addLayer(layer));
 
+  const heatPuanlari = bolgeler
+    .filter(b => typeof b.risk_skoru === "number")
+    .map(b => [b.lat, b.lon, b.risk_skoru]);
+  heatmapKatmani.setLatLngs(heatPuanlari);
 
   statSeridiniGuncelle();
   filtreSayilariniGuncelle();
@@ -174,27 +187,111 @@ fetch(BACKEND_URL)
     mockBolgeler.forEach(bolgeEkVerileriniUret);
     bolgeleriHaritayaYukle(mockBolgeler);
   });
+// --- Isı Haritası (Güncellenmiş renk geçişleri) ---
+const heatmapKatmani = L.heatLayer([], {
+  radius: 50,
+  blur: 50,
+  maxZoom: 10,
+  minOpacity: 0.35,
+  max: 1.0,
+  gradient: {
+    0.1: "#3b82f6", // Düşük risk: hafif ton
+    0.4: "#eab308", // Orta risk: canlı sarı
+    0.7: "#f97316", // Yüksek risk: belirgin turuncu
+    0.95: "#dc2626" // Kritik risk: derin parlayan kırmızı
+  }
+});
 
-map.addLayer(clusterGrup);
+// --- Yollar (Canvas Görseliyle Tam Uyumlu Mock Veri) ---
+const yolKatmani = L.layerGroup();
+const mockYollar = [
+  // Ana yol: Milas → Muğla merkez → Köyceğiz → Ortaca (D330 hattı, çok noktalı yumuşak güzergah)
+  {
+    koordinatlar: [
+      [37.3164, 27.7847], [37.29, 27.92], [37.26, 28.05], [37.24, 28.18],
+      [37.2153, 28.3636], [37.15, 28.42], [37.06, 28.52], [36.98, 28.62],
+      [36.9633, 28.6889], [36.92, 28.70], [36.87, 28.71], [36.8394, 28.7594]
+    ],
+    tip: "ana"
+  },
+  // Ana yol: Bodrum → Muğla merkez → Fethiye (D400 hattı)
+  {
+    koordinatlar: [
+      [37.0344, 27.4305], [37.08, 27.65], [37.12, 27.85], [37.16, 28.05],
+      [37.2153, 28.3636], [37.10, 28.55], [36.95, 28.70], [36.80, 28.85],
+      [36.6217, 29.1164]
+    ],
+    tip: "ana"
+  },
+  // Orman yolu: Milas → Marmaris iç hat
+  {
+    koordinatlar: [
+      [37.3164, 27.7847], [37.20, 27.95], [37.05, 28.10],
+      [36.95, 28.18], [36.8550, 28.2745]
+    ],
+    tip: "orman"
+  },
+  // Orman yolu: Köyceğiz → Datça iç hat
+  {
+    koordinatlar: [
+      [36.9633, 28.6889], [36.85, 28.30], [36.78, 27.95], [36.7300, 27.6889]
+    ],
+    tip: "orman"
+  }
+];
 
-const legend = L.control({ position: "bottomright" });
+function yolCiz(yol) {
+  const anaYolMu = yol.tip === "ana";
+  const renk = anaYolMu ? "#3b82f6" : "#8b5e3c";
+  const kalinlik = anaYolMu ? 1.8 : 1.2;
 
-legend.onAdd = function () {
-  const div = L.DomUtil.create("div", "legend");
-    div.innerHTML = `
-    <h4>Risk Seviyesi</h4>
-    <div class="legend-item"><span class="legend-dot kritik"></span> Kritik</div>
-    <div class="legend-item"><span class="legend-dot yuksek"></span> Yüksek</div>
-    <div class="legend-item"><span class="legend-dot orta"></span> Orta</div>
-    <div class="legend-item"><span class="legend-dot dusuk"></span> Düşük</div>
-    
-    
-    
-  `;
-  return div;
+  // İnce, hafif koyu dış çizgi — belirginlik için, kalınlığı abartmadan
+  L.polyline(yol.koordinatlar, {
+    color: "#101820",
+    weight: kalinlik + 1.5,
+    opacity: 0.6,
+    lineCap: "round",
+    lineJoin: "round",
+    smoothFactor: 1.5
+  }).addTo(yolKatmani);
+
+  // Asıl ince renkli çizgi
+  L.polyline(yol.koordinatlar, {
+    color: renk,
+    weight: kalinlik,
+    opacity: 0.9,
+    dashArray: anaYolMu ? null : "5 5",
+    lineCap: "round",
+    lineJoin: "round",
+    smoothFactor: 1.5
+  }).addTo(yolKatmani);
+}
+
+mockYollar.forEach(yolCiz);
+
+// --- Katman Grupları ve Haritaya Başlangıçta Ekleme ---
+const riskNoktalari = clusterGrup; 
+const kritikAlanlar = L.layerGroup(); // Şimdilik boş / yakında
+
+riskNoktalari.addTo(map);
+yolKatmani.addTo(map);
+heatmapKatmani.addTo(map);
+
+// --- Katman checkbox'ları (artık filtre panelinin içinde) ---
+const katmanEslesme = {
+  "risk-noktalari": riskNoktalari,
+  "yollar": yolKatmani,
+  "heatmap": heatmapKatmani
 };
 
-legend.addTo(map);
+document.querySelectorAll('#filtre-paneli input[data-katman]').forEach((checkbox) => {
+  checkbox.addEventListener("change", () => {
+    const katman = katmanEslesme[checkbox.dataset.katman];
+    if (!katman) return;
+    if (checkbox.checked) map.addLayer(katman);
+    else map.removeLayer(katman);
+  });
+});
 
 // Filtre panelini aç/kapat
 const filtreToggle = document.getElementById("filtre-toggle");
@@ -377,4 +474,82 @@ window.addEventListener('load', () => {
   setTimeout(() => {
     map.invalidateSize();
   }, 200);
+  lucide.createIcons();
+});
+
+let dashChart = null;
+
+function istatistikleriGuncelle(istatistik) {
+  document.getElementById("dash-kritik-sayi").textContent =
+    tumMarkerlar.filter(m => m.kategori === "kritik").length;
+  document.getElementById("dash-ortalama-risk").textContent =
+    Math.round(istatistik.ortalama_risk * 100) + "%";
+
+  const liste = document.getElementById("dash-kritik-liste");
+  liste.innerHTML = "";
+  istatistik.en_yuksek_riskli_3.forEach((bolge) => {
+    const kategori = riskKategori(bolge.risk_skoru);
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <span class="dash-liste-dot ${kategori}"></span>
+      <span class="dash-liste-ad">${bolge.ad ?? bolge.bolge_id}</span>
+      <strong class="dash-liste-yuzde ${kategori}">%${Math.round(bolge.risk_skoru * 100)}</strong>
+    `;
+    liste.appendChild(li);
+  });
+
+  dashGrafigiCiz();
+}
+
+function dashGrafigiCiz() {
+  const sayilar = { kritik: 0, yuksek: 0, orta: 0, dusuk: 0 };
+  tumMarkerlar.forEach(({ kategori }) => {
+    if (sayilar[kategori] !== undefined) sayilar[kategori]++;
+  });
+
+  const toplam = sayilar.kritik + sayilar.yuksek + sayilar.orta + sayilar.dusuk;
+  document.getElementById("dash-chart-toplam").innerHTML = `${toplam}<br><span>Bölge</span>`;
+
+  document.getElementById("rs-dusuk").textContent = `${sayilar.dusuk} (%${toplam ? Math.round(sayilar.dusuk / toplam * 100) : 0})`;
+  document.getElementById("rs-orta").textContent = `${sayilar.orta} (%${toplam ? Math.round(sayilar.orta / toplam * 100) : 0})`;
+  document.getElementById("rs-yuksek").textContent = `${sayilar.yuksek} (%${toplam ? Math.round(sayilar.yuksek / toplam * 100) : 0})`;
+  document.getElementById("rs-kritik").textContent = `${sayilar.kritik} (%${toplam ? Math.round(sayilar.kritik / toplam * 100) : 0})`;
+
+  const ctx = document.getElementById("dash-chart");
+  if (dashChart) dashChart.destroy();
+
+  dashChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["Kritik", "Yüksek", "Orta", "Düşük"],
+      datasets: [{
+        data: [sayilar.kritik, sayilar.yuksek, sayilar.orta, sayilar.dusuk],
+        backgroundColor: ["#e74c3c", "#e8590c", "#f1c40f", "#2ecc71"],
+        borderColor: "#141414",
+        borderWidth: 2
+      }]
+    },
+    options: {
+      cutout: "68%",
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.label}: ${ctx.raw} bölge`
+          }
+        }
+      }
+    }
+  });
+}
+
+const dashboardToggle = document.getElementById("dashboard-toggle");
+const dashboardPaneli = document.getElementById("dashboard-paneli");
+
+dashboardToggle.addEventListener("click", () => {
+  dashboardPaneli.classList.toggle("acik");
+  // Mock veriyle dolduruyoruz — Esma'nın /istatistikler endpoint'i gelince
+  // bu satır fetch(BACKEND_URL.replace('/bolgeler', '/istatistikler')) olacak.
+  istatistikleriGuncelle(mockIstatistikler);
+  lucide.createIcons();
 });

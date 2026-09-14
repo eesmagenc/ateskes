@@ -3,6 +3,8 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  overflow: hidden;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 #map {
@@ -180,12 +182,14 @@ header {
 header h1 {
   margin: 0;
   font-size: 20px;
+  font-weight: 700;
 }
 
 #stat-serit {
   display: flex;
   gap: 20px;
   font-size: 13px;
+  font-weight: 500;
   color: #ccc;
 }
 
@@ -204,18 +208,16 @@ header {
   gap: 16px;
 }
 
-header h1 {
-  margin: 0;
-  font-size: 20px;
-}
+
 
 #filtre-toggle {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 13px;
+  padding: 8px 12px;
+  font-size: 16px;
+  line-height: 1;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -235,6 +237,7 @@ header h1 {
 .ana-govde {
   position: relative;
   height: calc(100vh - 52px);
+  overflow: hidden;
 }
 
 #map {
@@ -245,17 +248,17 @@ header h1 {
 /* --- Off-canvas panel --- */
 #filtre-paneli {
   position: absolute;
-  top: 16px;
+  top: 96px;
   left: -300px;
   /* kapalı hâlde ekran dışında */
-  width: 240px;
-  z-index: 1000;
+  width: 220px;
+  z-index: 1001;
   background: rgba(20, 20, 20, 0.75);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  padding: 16px;
+  padding: 12px 14px;
   color: #fff;
   box-sizing: border-box;
   transition: left 0.3s ease;
@@ -267,14 +270,30 @@ header h1 {
 
 #filtre-paneli h3 {
   margin-top: 0;
-  font-size: 14px;
-  color: #ccc;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #9aa0a6;
 }
 
 .filtre-grup {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+.panel-bolum-ayrac {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 16px 0 12px 0;
+}
+
+.katman-grup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* --- Toggle satırı --- */
@@ -282,8 +301,11 @@ header h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 400;
   cursor: pointer;
+  line-height: 1;
+  min-height: 20px;
 }
 
 .toggle-satir input {
@@ -292,11 +314,14 @@ header h1 {
 }
 
 .dot {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   display: inline-block;
-  margin-right: 6px;
+  margin-right: 5px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
 }
 
 .dot.orta {
@@ -312,8 +337,8 @@ header h1 {
 /* --- iOS stili toggle switch --- */
 .toggle-switch {
   position: relative;
-  width: 36px;
-  height: 20px;
+  width: 30px;
+  height: 17px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: 999px;
   transition: background 0.2s;
@@ -325,15 +350,15 @@ header h1 {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: #fff;
   transition: transform 0.2s;
 }
 
 input:checked+.toggle-switch::before {
-  transform: translateX(16px);
+  transform: translateX(13px);
 }
 
 /* Toggle açıkken switch rengi risk rengine döner */
@@ -351,14 +376,16 @@ input[data-risk="dusuk"]:checked+.toggle-switch {
 }
 
 .filtre-sayi {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
   color: #888;
   background: rgba(255, 255, 255, 0.08);
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 999px;
-  margin-left: 4px;
+  margin-left: 3px;
+  vertical-align: middle;
 }
-
 /* ============================================
    POPUP TASARIMI - KOMPAKT
    ============================================ */
@@ -737,4 +764,571 @@ input[data-risk="yuksek"]:checked + .toggle-switch { background: rgba(232, 89, 1
 .cluster-marker.veri-yok {
   background: rgba(149, 165, 166, 0.85);
   box-shadow: 0 0 10px #95a5a6;
+}
+
+/* ============================================
+   DASHBOARD PANELİ
+   ============================================ */
+
+#dashboard-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#dashboard-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-inline-icon {
+  width: 14px;
+  height: 14px;
+}
+
+#dashboard-paneli {
+  position: absolute;
+  top: 16px;
+  right: -320px;
+  width: 280px;
+  z-index: 1000;
+  background: rgba(20, 20, 20, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  color: #fff;
+  box-sizing: border-box;
+  transition: right 0.3s ease;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+#dashboard-paneli.acik {
+  right: 16px;
+}
+
+.dash-baslik {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.dash-baslik-icon {
+  width: 18px;
+  height: 18px;
+  color: #e8590c;
+}
+
+.dash-baslik h3 {
+  margin: 0;
+  font-size: 12px;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+#dashboard-paneli h4 {
+  margin: 18px 0 8px 0;
+  font-size: 10.5px;
+  color: #9aa0a6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.dash-kart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+}
+
+.dash-kart-kritik {
+  border-color: rgba(231, 76, 60, 0.35);
+}
+
+.dash-kart-kritik .dash-deger {
+  color: #ff6b6b;
+}
+
+.dash-kart-risk {
+  border-color: rgba(230, 126, 34, 0.3);
+}
+
+.dash-deger {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.dash-kart-risk .dash-deger {
+  color: #ff9248;
+}
+
+.dash-etiket {
+  font-size: 9px;
+  color: #9aa0a6;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.dash-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dash-liste li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 7px;
+}
+
+.dash-liste-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dash-liste-dot.kritik { background: #e74c3c; box-shadow: 0 0 6px #e74c3c; }
+.dash-liste-dot.yuksek { background: #e8590c; box-shadow: 0 0 6px #e8590c; }
+.dash-liste-dot.orta   { background: #f1c40f; box-shadow: 0 0 6px #f1c40f; }
+.dash-liste-dot.dusuk  { background: #2ecc71; box-shadow: 0 0 6px #2ecc71; }
+
+.dash-liste-ad {
+  flex: 1;
+  color: #ecf0f1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-liste-yuzde {
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.dash-liste-yuzde.kritik { color: #ff6b6b; }
+.dash-liste-yuzde.yuksek { color: #ff9248; }
+.dash-liste-yuzde.orta   { color: #f1c40f; }
+.dash-liste-yuzde.dusuk  { color: #58d68d; }
+
+.dash-chart-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 2px 0;
+}
+
+#dash-chart {
+  max-width: 200px;
+  max-height: 200px;
+}
+
+/* --- Canlılık göstergesi (pulse) --- */
+.pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e74c3c;
+  margin-right: 4px;
+  box-shadow: 0 0 0 rgba(231, 76, 60, 0.6);
+  animation: pulse-dot-anim 1.8s infinite;
+}
+
+@keyframes pulse-dot-anim {
+  0% {
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(231, 76, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
+  }
+}
+
+.dash-chart-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dash-chart-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+}
+
+#dash-chart {
+  max-width: 120px;
+  max-height: 120px;
+}
+
+.dash-chart-ortasi {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.15;
+  pointer-events: none;
+}
+
+.dash-chart-ortasi span {
+  display: block;
+  font-size: 9px;
+  font-weight: 500;
+  color: #9aa0a6;
+  text-transform: uppercase;
+}
+
+.dash-risk-seviyesi {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.dash-risk-seviyesi li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #ecf0f1;
+}
+
+.dash-risk-seviyesi li strong {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: #9aa0a6;
+  font-weight: 600;
+}
+/* ============================================
+   KATMANLAR PANELİ (sol üst, zoom kontrolünün altında)
+   ============================================ */
+
+#katman-kontrolu {
+  position: absolute;
+  top: 96px;
+  left: 16px;
+  z-index: 1000;
+  width: 158px;
+}
+
+#katman-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(20, 20, 20, 0.9);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#katman-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#katman-toggle span {
+  flex: 1;
+  text-align: left;
+}
+
+.katman-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s;
+}
+
+#katman-toggle.acik .katman-chevron {
+  transform: rotate(180deg);
+}
+
+#katman-listesi {
+  max-height: 0;
+  overflow: hidden;
+  background: rgba(20, 20, 20, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  transition: max-height 0.25s ease;
+}
+
+#katman-listesi.acik {
+  max-height: 200px;
+}
+
+.katman-satir {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 2px;
+  font-size: 12.5px;
+  color: #ecf0f1;
+  cursor: pointer;
+}
+
+.katman-satir input[type="checkbox"] {
+  display: none;
+}
+
+.katman-check {
+  width: 11px;
+  height: 11px;
+  border: 1.3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.katman-satir input:checked + .katman-check {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.katman-satir input:checked + .katman-check::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.5px;
+  width: 3px;
+  height: 6px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.katman-icon {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.katman-icon-kritik { color: #e74c3c; }
+.katman-icon-yol { color: #3b82f6; }
+.katman-icon-heatmap { color: #f97316; }
+
+.katman-kilitli {
+  color: #6b7280;
+  font-size: 10.5px;
+  opacity: 0.65;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  cursor: not-allowed;
+}
+
+.katman-kilitli .katman-check {
+  opacity: 0.4;
+}
+
+.katman-lock {
+  width: 11px;
+  height: 11px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.katman-yakinda {
+  margin-left: auto;
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9aa0a6;
+  padding: 2px 6px;
+  border-radius: 20px;
+}
+
+/* --- Heatmap yarı saydamlık --- */
+.leaflet-heatmap-layer {
+  opacity: 0.58;
+}
+/* ============================================
+   KATMAN KONTROLÜ (Leaflet Override - Koyu Tema)
+   ============================================ */
+.leaflet-control-layers {
+  background: rgba(20, 20, 20, 0.85) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55) !important;
+  padding: 6px 8px;
+}
+
+.leaflet-control-layers-expanded {
+  padding: 10px 14px !important;
+}
+
+.leaflet-control-layers-toggle {
+  background-image: none !important;
+  position: relative;
+  width: 34px !important;
+  height: 34px !important;
+  background-color: rgba(20, 20, 20, 0.85) !important;
+  border-radius: 8px !important;
+}
+
+.leaflet-control-layers-toggle::after {
+  content: "▦";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 16px;
+}
+
+.leaflet-control-layers-list {
+  font-size: 12px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.leaflet-control-layers-separator {
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  margin: 6px 0;
+}
+
+.leaflet-control-layers label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ecf0f1;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.leaflet-control-layers input {
+  accent-color: #e8590c;
+}
+
+/* Kritik alanlar placeholder (yakında) stili */
+.katman-pasif {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+}
+.katman-pasif input {
+  cursor: not-allowed !important;
+}
+/* ============================================
+   HARİTA KONTROLLERİ (Zoom butonları)
+   ============================================ */
+
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+.leaflet-control-zoom a {
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  background: rgba(20, 20, 20, 0.9) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  font-size: 18px !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: rgba(232, 89, 12, 0.9) !important;
+}
+
+/* ============================================
+   YOL LEGEND'I
+   ============================================ */
+
+#yol-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 18px;
+  z-index: 1000;
+  width: 138px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  background: rgba(20, 20, 20, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #ecf0f1;
+  font-size: 11px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+}
+
+#yol-legend strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #ffffff;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+#yol-legend div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+}
+
+.yol-cizgi {
+  display: inline-block;
+  width: 22px;
+  height: 3px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.yol-cizgi.ana {
+  background: #3b82f6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.7);
+}
+
+.yol-cizgi.orman {
+  height: 0;
+  border-top: 3px dashed #8b5e3c;
 }

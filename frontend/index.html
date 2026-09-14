@@ -6,23 +6,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AteşKes — Risk Haritası</title>
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- MarkerCluster CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-
+   
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
     <header>
-        <button id="filtre-toggle" aria-label="Filtreler">☰ Filtreler</button>
+        <button id="filtre-toggle" aria-label="Filtreler">☰</button>
         <h1>AteşKes</h1>
         <div id="stat-serit">
             <span>Toplam Bölge: <strong id="stat-toplam">-</strong></span>
-            <span>Kritik Riskli: <strong id="stat-kritik">-</strong></span>
+            <span><span class="pulse-dot"></span> Kritik Riskli: <strong id="stat-kritik">-</strong></span>
         </div>
+        <button id="dashboard-toggle" aria-label="Özet Panel">
+            <i data-lucide="bar-chart-3" class="btn-inline-icon"></i>
+        </button>
     </header>
 
     <div class="ana-govde">
@@ -56,12 +63,73 @@
                 </label>
             </div>
 
-            <!-- Hastane/okul çevresi filtresi kaldırıldı — Hafta 15'te
-                 "kritik alanlar" ayrı liste + marker olarak geri gelecek,
-                 tek boolean (yakin_kurum) yerine isim/tür/mesafe içeren
-                 bir veri yapısı gerekecek. -->
+            <div class="panel-bolum-ayrac"></div>
+
+            <h3>Katmanlar</h3>
+            <div class="katman-grup">
+                <label class="katman-satir">
+                    <input type="checkbox" data-katman="risk-noktalari" checked>
+                    <span class="katman-check"></span>
+                    <i data-lucide="map-pin" class="katman-icon katman-icon-kritik"></i>
+                    Risk Noktaları
+                </label>
+                <label class="katman-satir">
+                    <input type="checkbox" data-katman="yollar" checked>
+                    <span class="katman-check"></span>
+                    <i data-lucide="route" class="katman-icon katman-icon-yol"></i>
+                    Yollar
+                </label>
+                <label class="katman-satir">
+                    <input type="checkbox" data-katman="heatmap" checked>
+                    <span class="katman-check"></span>
+                    <i data-lucide="flame" class="katman-icon katman-icon-heatmap"></i>
+                    Risk Isı Haritası
+                </label>
+                <label class="katman-satir katman-kilitli">
+                    <input type="checkbox" disabled>
+                    <span class="katman-check"></span>
+                    <i data-lucide="lock" class="katman-lock"></i>
+                    <span>Kritik Alanlar — Yakında</span>
+                </label>
+            </div>
 
             <!-- Hafta 3'te zaman aralığı slider'ı eklenecek -->
+        </aside>
+
+        <aside id="dashboard-paneli">
+            <div class="dash-baslik">
+                <i data-lucide="layout-dashboard" class="dash-baslik-icon"></i>
+                <h3>Özet İstatistikler</h3>
+                <span class="pulse-dot" style="margin-left: auto;"></span>
+            </div>
+
+            <div class="dash-grid">
+                <div class="dash-kart dash-kart-kritik">
+                    <span class="dash-deger" id="dash-kritik-sayi">-</span>
+                    <span class="dash-etiket">Kritik Riskli</span>
+                </div>
+                <div class="dash-kart dash-kart-risk">
+                    <span class="dash-deger" id="dash-ortalama-risk">-</span>
+                    <span class="dash-etiket">Ortalama Risk</span>
+                </div>
+            </div>
+
+            <h4>En Kritik 3 Bölge</h4>
+            <ul id="dash-kritik-liste" class="dash-liste"></ul>
+
+            <h4>Risk Dağılımı</h4>
+            <div class="dash-chart-row">
+                <div class="dash-chart-wrap">
+                    <canvas id="dash-chart"></canvas>
+                    <span class="dash-chart-ortasi" id="dash-chart-toplam">-</span>
+                </div>
+                <ul class="dash-risk-seviyesi" id="dash-risk-seviyesi">
+                    <li><span class="dash-liste-dot dusuk"></span> Düşük <strong id="rs-dusuk">-</strong></li>
+                    <li><span class="dash-liste-dot orta"></span> Orta <strong id="rs-orta">-</strong></li>
+                    <li><span class="dash-liste-dot yuksek"></span> Yüksek <strong id="rs-yuksek">-</strong></li>
+                    <li><span class="dash-liste-dot kritik"></span> Kritik <strong id="rs-kritik">-</strong></li>
+                </ul>
+            </div>
         </aside>
 
         <div id="map"></div>
@@ -69,6 +137,8 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script src="config.js"></script>
     <script src="mockData.js"></script>
     <script src="app.js"></script>

@@ -8,3 +8,13 @@ const mockBolgeler = [
   { bolge_id: "mugla_ortaca_01", ad: "Ortaca", lat: 36.8394, lon: 28.7594, risk_skoru: 0.25, oncelik_skoru: 0.35, tahliye_skoru: 0.20 },
   { bolge_id: "mugla_datca_01", ad: "Datça Yarımadası", lat: 36.7300, lon: 27.6889, risk_skoru: 0.10, oncelik_skoru: 0.20, tahliye_skoru: 0.08 }
 ];
+
+const mockIstatistikler = {
+  toplam_bolge: 8,
+  ortalama_risk: 0.459,
+  en_yuksek_riskli_3: [
+    { bolge_id: "mugla_milas_01", ad: "Milas Ormanları", risk_skoru: 0.92 },
+    { bolge_id: "mugla_marmaris_01", ad: "Marmaris Kıyı Bölgesi", risk_skoru: 0.85 },
+    { bolge_id: "mugla_koycegiz_01", ad: "Köyceğiz Gölü Çevresi", risk_skoru: 0.68 }
+  ]
+};
