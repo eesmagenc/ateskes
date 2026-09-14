@@ -1,11 +1,13 @@
 import os
-import sqlite3
-import requests
 import sys
+import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# --- CRUD katmanı buradan geliyor, main.py bunları TEKRAR YAZMIYOR ---
+from veritabani import veritabani_baglan, bolge_ekle, bolge_getir, tum_bolgeleri_getir
 
 # hesaplamalar.py'yi data-processing klasöründen import et
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'data-processing'))
@@ -30,35 +32,6 @@ app.add_middleware(
 )
 
 # -----------------------------------------------------------------------
-# VERİTABANI — Sudenur'un şemasıyla uyumlu (11 sütun)
-# -----------------------------------------------------------------------
-def veritabani_baglan():
-    conn = sqlite3.connect("veriler.db")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS bolgeler (
-            bolge_id TEXT PRIMARY KEY,
-            lat REAL, lon REAL,
-            risk_skoru REAL, oncelik_skoru REAL, tahliye_skoru REAL,
-            yangin_yonu_derece REAL, yayilma_hizi TEXT,
-            yukseklik_metre REAL, egim_derece REAL,
-            guncelleme_zamani TEXT
-        )
-    """)
-    conn.commit()
-    return conn
-
-def bolge_ekle(conn, bolge):
-    conn.execute(
-        "INSERT OR REPLACE INTO bolgeler VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (bolge["bolge_id"], bolge["lat"], bolge["lon"], bolge["risk_skoru"],
-         bolge["oncelik_skoru"], bolge["tahliye_skoru"],
-         bolge["yangin_yonu_derece"], bolge["yayilma_hizi"],
-         bolge["yukseklik_metre"], bolge["egim_derece"],
-         bolge["guncelleme_zamani"])
-    )
-    conn.commit()
-
-# -----------------------------------------------------------------------
 # YARDIMCI FONKSİYONLAR
 # -----------------------------------------------------------------------
 def hava_verisi_cek(lat, lon):
@@ -77,8 +50,9 @@ def hava_verisi_cek(lat, lon):
             "ruzgar_hizi": c["wind_speed_10m"],
             "ruzgar_yonu": c["wind_direction_10m"]
         }
-    except:
+    except requests.RequestException:
         return None
+
 
 def yukseklik_cek(lat, lon):
     try:
@@ -94,25 +68,17 @@ def yukseklik_cek(lat, lon):
             "dogu":   sonuclar[3]["elevation"],
             "bati":   sonuclar[4]["elevation"],
         }
-    except:
+    except requests.RequestException:
         return None
 
-def db_den_yukseklik_getir(bolge_id, conn):
-    row = conn.execute(
-        "SELECT yukseklik_metre, egim_derece FROM bolgeler WHERE bolge_id=?",
-        (bolge_id,)
-    ).fetchone()
-    return row
 
-def son_guncelleme_eskimi(bolge_id, conn, dakika=30):
-    row = conn.execute(
-        "SELECT guncelleme_zamani FROM bolgeler WHERE bolge_id=?",
-        (bolge_id,)
-    ).fetchone()
-    if row is None or row[0] is None:
+def guncelleme_eskimi_mi(bolge, dakika=30):
+    """bolge: veritabani.bolge_getir()'den gelen dict ya da None."""
+    if bolge is None or bolge.get("guncelleme_zamani") is None:
         return True
-    son = datetime.fromisoformat(row[0])
+    son = datetime.fromisoformat(bolge["guncelleme_zamani"])
     return datetime.utcnow() - son > timedelta(minutes=dakika)
+
 
 # -----------------------------------------------------------------------
 # ENDPOİNTLER
@@ -121,9 +87,11 @@ def son_guncelleme_eskimi(bolge_id, conn, dakika=30):
 def ana_sayfa():
     return {"durum": "calisiyor", "proje": "AteşKes"}
 
+
 @app.get("/saglik")
 def saglik():
-    return {"durum": "✅ API çalışıyor"}
+    return {"durum": "API çalışıyor"}
+
 
 @app.get("/bolgeler")
 def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0):
@@ -149,88 +117,71 @@ def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0
             lon = float(degerler[basliklar.index("longitude")])
             acq_date = degerler[basliklar.index("acq_date")] if "acq_date" in basliklar else ""
             confidence = degerler[basliklar.index("confidence")] if "confidence" in basliklar else ""
-        except:
+        except (ValueError, IndexError):
             continue
 
         bolge_id = f"nokta_{lat}_{lon}"
 
-        # --- Yükseklik/eğim: DB'de varsa tekrar çekme ---
-        cached = db_den_yukseklik_getir(bolge_id, conn)
-        if cached:
-            yukseklik_metre, egim_derece = cached
-            yukseklikler = None
+        # --- CRUD: READ. Bu nokta daha önce işlendi mi? ---
+        mevcut = bolge_getir(conn, bolge_id)
+
+        # --- Yükseklik/eğim: coğrafya sabit, DB'de varsa tekrar çekme ---
+        if mevcut and mevcut["yukseklik_metre"] is not None:
+            yukseklik_metre = mevcut["yukseklik_metre"]
+            egim_derece = mevcut["egim_derece"]
+            egim_yonu = mevcut["egim_yonu"]  # coğrafi olarak sabit, DB'den okunuyor
         else:
             yukseklikler = yukseklik_cek(lat, lon)
             if yukseklikler is None:
                 continue
             yukseklik_metre = yukseklikler["merkez"]
             egim_derece = egim_hesapla(yukseklikler)
+            egim_yonu = egim_yonu_belirle(yukseklikler)
 
-        # --- Hava: 30 dakikada bir güncelle ---
-        if son_guncelleme_eskimi(bolge_id, conn, dakika=30):
+        # --- Hava + risk: sadece 30 dakikada bir yeniden hesapla ---
+        if guncelleme_eskimi_mi(mevcut, dakika=30):
             hava = hava_verisi_cek(lat, lon)
             if hava is None:
                 continue
 
-            # Eğim yönü hesapla
-            if yukseklikler:
-                egim_yonu = egim_yonu_belirle(yukseklikler)
-            else:
-                egim_yonu = "kuzey"  # DB'den gelince varsayılan
-
-            # Sultan'ın fonksiyonları
             risk = risk_skoru(hava["sicaklik"], hava["ruzgar_hizi"], hava["nem"], egim_derece)
-            oncelik = 0.7
+            oncelik = 0.7  # TODO: OSM kritik alan eşleştirmesi bitince oncelik_skoru() ile değiştir
             tahliye = tahliye_skoru(risk, oncelik)
             uyumlu = ruzgar_egime_uyumlu_mu(hava["ruzgar_yonu"], egim_yonu)
             yayilma = yayilma_hizi_belirle(hava["ruzgar_hizi"], egim_derece, uyumlu)
 
-            bolge_ekle(conn, {
-                "bolge_id": bolge_id,
-                "lat": lat,
-                "lon": lon,
-                "risk_skoru": round(risk, 3),
-                "oncelik_skoru": oncelik,
-                "tahliye_skoru": tahliye,
-                "yangin_yonu_derece": hava["ruzgar_yonu"],
-                "yayilma_hizi": yayilma,
-                "yukseklik_metre": yukseklik_metre,
-                "egim_derece": egim_derece,
-                "guncelleme_zamani": datetime.utcnow().isoformat()
-            })
-
+            bolge = {
+                "bolge_id": bolge_id, "lat": lat, "lon": lon,
+                "risk_skoru": round(risk, 3), "oncelik_skoru": oncelik, "tahliye_skoru": tahliye,
+                "yangin_yonu_derece": hava["ruzgar_yonu"], "yayilma_hizi": yayilma,
+                "yukseklik_metre": yukseklik_metre, "egim_derece": egim_derece, "egim_yonu": egim_yonu,
+                "sicaklik": hava["sicaklik"], "nem": hava["nem"], "ruzgar_hizi": hava["ruzgar_hizi"],
+                "guncelleme_zamani": datetime.utcnow().isoformat(),
+            }
+            # --- CRUD: CREATE/UPDATE. Hesaplanan veriyi DB'ye yaz ---
+            bolge_ekle(conn, bolge)
         else:
-            row = conn.execute(
-                "SELECT risk_skoru, oncelik_skoru, tahliye_skoru, yangin_yonu_derece, yayilma_hizi FROM bolgeler WHERE bolge_id=?",
-                (bolge_id,)
-            ).fetchone()
-            risk, oncelik, tahliye, yangin_yonu_derece, yayilma = row
-            hava = hava_verisi_cek(lat, lon)
+            # Hava/risk taze — dış API'ye gitmeden DB'deki değerleri kullan
+            bolge = mevcut
 
-        if risk < min_risk or risk > max_risk:
+        if bolge["risk_skoru"] < min_risk or bolge["risk_skoru"] > max_risk:
             continue
 
-        sonuclar.append({
-            "bolge_id": bolge_id,
-            "lat": lat,
-            "lon": lon,
-            "risk_skoru": round(risk, 3),
-            "oncelik_skoru": oncelik,
-            "tahliye_skoru": tahliye,
-            "yangin_yonu_derece": hava["ruzgar_yonu"] if hava else None,
-            "yayilma_hizi": yayilma,
-            "sicaklik": hava["sicaklik"] if hava else None,
-            "ruzgar_hizi": hava["ruzgar_hizi"] if hava else None,
-            "ruzgar_yonu": hava["ruzgar_yonu"] if hava else None,
-            "nem": hava["nem"] if hava else None,
-            "yukseklik_metre": yukseklik_metre,
-            "egim_derece": egim_derece,
-            "acq_date": acq_date,
-            "confidence": confidence
-        })
+        sonuclar.append({**bolge, "acq_date": acq_date, "confidence": confidence})
 
     conn.close()
     return {"toplam_nokta": len(sonuclar), "veri": sonuclar}
+
+
+@app.get("/bolgeler/{bolge_id}")
+def tek_bolge(bolge_id: str):
+    conn = veritabani_baglan()
+    bolge = bolge_getir(conn, bolge_id)
+    conn.close()
+    if bolge is None:
+        return {"hata": "bolge bulunamadi"}
+    return bolge
+
 
 @app.get("/debug-firms")
 def debug_firms():
