@@ -6,3 +6,4 @@ jupyter
 geopandas
 overpy
 requests
+networkx
