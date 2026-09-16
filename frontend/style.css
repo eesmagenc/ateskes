@@ -1152,6 +1152,7 @@ input[data-risk="yuksek"]:checked + .toggle-switch { background: rgba(232, 89, 1
 .katman-icon-kritik { color: #e74c3c; }
 .katman-icon-yol { color: #3b82f6; }
 .katman-icon-heatmap { color: #f97316; }
+.katman-icon-rota { color: #22d3ee; }
 
 .katman-kilitli {
   color: #6b7280;
@@ -1331,4 +1332,49 @@ input[data-risk="yuksek"]:checked + .toggle-switch { background: rgba(232, 89, 1
 .yol-cizgi.orman {
   height: 0;
   border-top: 3px dashed #8b5e3c;
+}
+
+/* --- Rota akış animasyonu (kaçış yönü hissi) --- */
+.rota-akis-cizgisi {
+  stroke-dasharray: 10 8;
+  animation: rota-akis 0.8s linear infinite;
+}
+
+@keyframes rota-akis {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+/* --- Rota başlangıç/hedef sembolleri (risk marker'larından ayrık) --- */
+.rota-nokta {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #22d3ee;
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+}
+
+.rota-nokta i {
+  width: 14px;
+  height: 14px;
+}
+
+.rota-baslangic {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.rota-baslangic i {
+  color: #ef4444;
+}
+
+.rota-hedef {
+  background: rgba(34, 211, 238, 0.2);
+}
+
+.rota-hedef i {
+  color: #22d3ee;
 }

@@ -267,7 +267,77 @@ function yolCiz(yol) {
   }).addTo(yolKatmani);
 }
 
-mockYollar.forEach(yolCiz);
+function yollariGetir() {
+  const yolUrl = BACKEND_URL.replace("/bolgeler", "/yollar");
+
+  fetch(yolUrl)
+    .then((r) => {
+      if (!r.ok) throw new Error(`Backend ${r.status} döndü`);
+      return r.json();
+    })
+    .then((veri) => {
+      console.log("Gerçek yol verisi kullanılıyor:", yolUrl);
+      // Esma'nın gerçek /yollar yanıtının şeklini henüz bilmiyoruz —
+      // burada bir varsayım yapıyoruz (geometry + highway alanları).
+      // Gerçek şekil netleşince bu dönüştürme satırı güncellenecek.
+      const gercekYollar = veri.map((yol) => ({
+        koordinatlar: yol.geometry ?? yol.koordinatlar,
+        tip: (yol.highway === "track" || yol.tip === "orman") ? "orman" : "ana"
+      }));
+      gercekYollar.forEach(yolCiz);
+    })
+    .catch((err) => {
+      console.warn("Yol verisine ulaşılamadı, mock veri kullanılıyor:", err.message);
+      mockYollar.forEach(yolCiz);
+    });
+}
+
+yollariGetir();
+
+// --- Rota Vurgusu (Sultan'ın Hafta 3 A* notebook'undan) ---
+// Senaryo: Gürece (yangın başlangıcı) -> Bodrum Amerikan Hastanesi (tahliye hedefi)
+// A*, eğim cezası sayesinde kısa/dik rota yerine uzun/güvenli rotayı seçti.
+const rotaKatmani = L.layerGroup();
+
+const onerilenRota = [
+  [37.039538, 27.322432], // yangin_baslangic — Gürece köy
+  [37.041, 27.360],       // kavsak_duz
+  [37.040, 27.395],       // kavsak_orta
+  [37.039939, 27.428962]  // hastane_hedef — Bodrum Amerikan Hastanesi
+];
+
+// Koyu dış çizgi — belirginlik için
+L.polyline(onerilenRota, {
+  color: "#0a2e33",
+  weight: 3,
+  opacity: 0.7,
+  lineCap: "round",
+  lineJoin: "round"
+}).addTo(rotaKatmani);
+
+// Asıl turkuaz rota çizgisi
+L.polyline(onerilenRota, {
+  color: "#38bdf8",
+  weight: 2,
+  opacity: 0.9,
+  lineCap: "round",
+  lineJoin: "round",
+  className: "rota-akis-cizgisi"
+}).addTo(rotaKatmani);
+
+// Başlangıç ve hedef noktalarını işaretle
+// Rota başlangıç/bitiş noktalarına AYRI marker koymuyoruz — bu noktalar
+// zaten birer risk bölgesi (kırmızı/sarı/yeşil marker olarak haritada
+// duruyor). Sadece o iki noktayı ince bir turkuaz halkayla vurguluyoruz,
+// "bu nokta aynı zamanda rota ucu" mesajını risk rengini bozmadan veriyoruz.
+[onerilenRota[0], onerilenRota[onerilenRota.length - 1]].forEach((nokta) => {
+  L.circleMarker(nokta, {
+    radius: 3,
+    color: "#22d3ee",
+    weight: 1.5,
+    fillOpacity: 1,
+  }).addTo(rotaKatmani);
+});
 
 // --- Katman Grupları ve Haritaya Başlangıçta Ekleme ---
 const riskNoktalari = clusterGrup; 
@@ -281,8 +351,11 @@ heatmapKatmani.addTo(map);
 const katmanEslesme = {
   "risk-noktalari": riskNoktalari,
   "yollar": yolKatmani,
-  "heatmap": heatmapKatmani
+  "heatmap": heatmapKatmani,
+  "rota": rotaKatmani
 };
+
+rotaKatmani.addTo(map);
 
 document.querySelectorAll('#filtre-paneli input[data-katman]').forEach((checkbox) => {
   checkbox.addEventListener("change", () => {
@@ -546,10 +619,26 @@ function dashGrafigiCiz() {
 const dashboardToggle = document.getElementById("dashboard-toggle");
 const dashboardPaneli = document.getElementById("dashboard-paneli");
 
+function istatistikleriGetir() {
+  const istatistikUrl = BACKEND_URL.replace("/bolgeler", "/istatistikler");
+
+  fetch(istatistikUrl)
+    .then((r) => {
+      if (!r.ok) throw new Error(`Backend ${r.status} döndü`);
+      return r.json();
+    })
+    .then((veri) => {
+      console.log("Gerçek istatistik verisi kullanılıyor:", istatistikUrl);
+      istatistikleriGuncelle(veri);
+    })
+    .catch((err) => {
+      console.warn("İstatistik verisine ulaşılamadı, mock veri kullanılıyor:", err.message);
+      istatistikleriGuncelle(mockIstatistikler);
+    });
+}
+
 dashboardToggle.addEventListener("click", () => {
   dashboardPaneli.classList.toggle("acik");
-  // Mock veriyle dolduruyoruz — Esma'nın /istatistikler endpoint'i gelince
-  // bu satır fetch(BACKEND_URL.replace('/bolgeler', '/istatistikler')) olacak.
-  istatistikleriGuncelle(mockIstatistikler);
+  istatistikleriGetir();
   lucide.createIcons();
 });
