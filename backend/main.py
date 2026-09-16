@@ -1,9 +1,10 @@
 import os
 import sys
+import logging
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- CRUD katmanı buradan geliyor, main.py bunları TEKRAR YAZMIYOR ---
@@ -13,12 +14,27 @@ from veritabani import veritabani_baglan, bolge_ekle, bolge_getir, tum_bolgeleri
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'data-processing'))
 from hesaplamalar import (
     egim_hesapla, egim_yonu_belirle,
-    risk_skoru, oncelik_skoru, tahliye_skoru,
-    ruzgar_egime_uyumlu_mu, yayilma_hizi_belirle
+    risk_skoru, tahliye_skoru,
+    ruzgar_egime_uyumlu_mu, yayilma_hizi_belirle,
+    bolge_oncelik_belirle, osm_kritik_alanlari_cek,
 )
+from yol_verisi import yol_verisi_cek
 
 load_dotenv()
-app = FastAPI()
+
+# --- Loglama: hata olduğunda terminalde görünür kayıt tutar (sunumda "neden
+#     çöktü" sorusuna cevap verir). basicConfig sadece burada, bir kere. ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("ateskes.main")
+
+app = FastAPI(
+    title="AteşKes API",
+    description="Yangın risk skoru, tahliye önceliği ve eğime duyarlı rota verisi sunan backend.",
+    version="0.3.0",
+)
 
 # -----------------------------------------------------------------------
 # CORS AYARI
@@ -80,6 +96,23 @@ def guncelleme_eskimi_mi(bolge, dakika=30):
     return datetime.utcnow() - son > timedelta(minutes=dakika)
 
 
+# --- OSM kritik alanları (hastane/okul/huzurevi/köy) — sadece 1 kez çekilir,
+#     bellekte tutulur. Overpass'a her /bolgeler isteğinde gitmiyoruz. ---
+_kritik_alanlar_cache = None
+
+
+def kritik_alanlari_getir():
+    global _kritik_alanlar_cache
+    if _kritik_alanlar_cache is None:
+        try:
+            _kritik_alanlar_cache = osm_kritik_alanlari_cek()
+        except Exception:
+            # Overpass o an cevap vermiyorsa sistem çökmesin; boş liste ile
+            # devam et, bolge_oncelik_belirle() bu durumda 0.5 (nötr) döner.
+            _kritik_alanlar_cache = []
+    return _kritik_alanlar_cache
+
+
 # -----------------------------------------------------------------------
 # ENDPOİNTLER
 # -----------------------------------------------------------------------
@@ -93,8 +126,20 @@ def saglik():
     return {"durum": "API çalışıyor"}
 
 
-@app.get("/bolgeler")
-def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0):
+@app.get(
+    "/bolgeler",
+    summary="Aktif yangın noktalarını risk/eğim/tahliye bilgisiyle döndürür",
+)
+def bolgeler_getir(
+    limit: int = Query(20, description="Döndürülecek maksimum nokta sayısı", example=20),
+    min_risk: float = Query(0.0, ge=0.0, le=1.0, description="0-1 arası minimum risk skoru filtresi"),
+    max_risk: float = Query(1.0, ge=0.0, le=1.0, description="0-1 arası maksimum risk skoru filtresi"),
+):
+    """NASA FIRMS'ten aktif yangın noktalarını çeker; her nokta için Open-Meteo
+    hava verisi ve Open-Topo-Data eğim/yükseklik verisiyle Sultan'ın risk,
+    öncelik ve tahliye formüllerini uygular. Coğrafi veriler (yükseklik, eğim,
+    öncelik) veritabanında önbelleklenir; hava/risk 30 dakikada bir tazelenir.
+    """
     MAP_KEY = os.getenv("MAP_KEY")
     url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/MODIS_NRT/26,36,45,42/1"
     r = requests.get(url, timeout=30)
@@ -145,7 +190,9 @@ def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0
                 continue
 
             risk = risk_skoru(hava["sicaklik"], hava["ruzgar_hizi"], hava["nem"], egim_derece)
-            oncelik = 0.7  # TODO: OSM kritik alan eşleştirmesi bitince oncelik_skoru() ile değiştir
+            oncelik, en_yakin_alan, _ = bolge_oncelik_belirle(
+                lat, lon, kritik_alanlari_getir(), maks_mesafe_metre=20000
+            )
             tahliye = tahliye_skoru(risk, oncelik)
             uyumlu = ruzgar_egime_uyumlu_mu(hava["ruzgar_yonu"], egim_yonu)
             yayilma = yayilma_hizi_belirle(hava["ruzgar_hizi"], egim_derece, uyumlu)
@@ -181,6 +228,53 @@ def tek_bolge(bolge_id: str):
     if bolge is None:
         return {"hata": "bolge bulunamadi"}
     return bolge
+
+
+@app.get(
+    "/yollar",
+    summary="Bölgedeki yolları eğim etiketiyle döndürür",
+    response_description="Ana yol / tali yol / orman yolu olarak sınıflandırılmış, her segmentte egim_derece alanı olan yol listesi.",
+)
+def yollar_getir(
+    min_lat: float = Query(..., description="Bounding box güney sınırı, örn. 36.75", example=36.75),
+    min_lon: float = Query(..., description="Bounding box batı sınırı, örn. 28.15", example=28.15),
+    max_lat: float = Query(..., description="Bounding box kuzey sınırı, örn. 36.95", example=36.95),
+    max_lon: float = Query(..., description="Bounding box doğu sınırı, örn. 28.40", example=28.40),
+    egim_ekle: bool = Query(True, description="True ise her segmentin egim_derece alanı hesaplanır (yavaşlatır)."),
+):
+    """
+    Verilen bounding box içindeki yolları OSM/Overpass'tan çeker.
+
+    egim_ekle=true olduğunda her segmentin başlangıç ve bitiş noktasında
+    Sultan'ın egim_hesapla() fonksiyonu çağrılır, ikisinin ortalaması
+    segmentin egim_derece alanına yazılır (Sultan'ın A* Eğim Cezası bu
+    alanı kullanacak).
+    """
+    yollar = yol_verisi_cek((min_lat, min_lon, max_lat, max_lon))
+    if not yollar:
+        logger.warning("Bu bbox icin yol verisi bulunamadi: %s", (min_lat, min_lon, max_lat, max_lon))
+        return {"hata": "Yol verisi alinamadi veya bu bolgede yol yok", "toplam_yol": 0, "veri": []}
+
+    if egim_ekle:
+        # Aynı düğüm birçok segmentte başlangıç/bitiş olarak tekrar edebilir
+        # (kavşaklar) — aynı koordinat için Open-Topo-Data'yı iki kez
+        # çağırmamak için bu istek boyunca geçerli basit bir bellek önbelleği.
+        _egim_onbellek = {}
+
+        def egim_al(lat, lon):
+            anahtar = (round(lat, 5), round(lon, 5))
+            if anahtar not in _egim_onbellek:
+                yukseklikler = yukseklik_cek(lat, lon)
+                _egim_onbellek[anahtar] = egim_hesapla(yukseklikler) if yukseklikler else None
+            return _egim_onbellek[anahtar]
+
+        for yol in yollar:
+            baslangic = yol["koordinatlar"][0]
+            bitis = yol["koordinatlar"][-1]
+            egimler = [e for e in (egim_al(*baslangic), egim_al(*bitis)) if e is not None]
+            yol["egim_derece"] = round(sum(egimler) / len(egimler), 1) if egimler else None
+
+    return {"toplam_yol": len(yollar), "veri": yollar}
 
 
 @app.get("/debug-firms")
