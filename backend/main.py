@@ -1,22 +1,40 @@
 import os
-import sqlite3
-import requests
 import sys
+import logging
+import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+
+# --- CRUD katmanı buradan geliyor, main.py bunları TEKRAR YAZMIYOR ---
+from veritabani import veritabani_baglan, bolge_ekle, bolge_getir, tum_bolgeleri_getir
 
 # hesaplamalar.py'yi data-processing klasöründen import et
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'data-processing'))
 from hesaplamalar import (
     egim_hesapla, egim_yonu_belirle,
-    risk_skoru, oncelik_skoru, tahliye_skoru,
-    ruzgar_egime_uyumlu_mu, yayilma_hizi_belirle
+    risk_skoru, tahliye_skoru,
+    ruzgar_egime_uyumlu_mu, yayilma_hizi_belirle,
+    bolge_oncelik_belirle, osm_kritik_alanlari_cek,
 )
+from yol_verisi import yol_verisi_cek
 
 load_dotenv()
-app = FastAPI()
+
+# --- Loglama: hata olduğunda terminalde görünür kayıt tutar (sunumda "neden
+#     çöktü" sorusuna cevap verir). basicConfig sadece burada, bir kere. ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("ateskes.main")
+
+app = FastAPI(
+    title="AteşKes API",
+    description="Yangın risk skoru, tahliye önceliği ve eğime duyarlı rota verisi sunan backend.",
+    version="0.3.0",
+)
 
 # -----------------------------------------------------------------------
 # CORS AYARI
@@ -28,35 +46,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# -----------------------------------------------------------------------
-# VERİTABANI — Sudenur'un şemasıyla uyumlu (11 sütun)
-# -----------------------------------------------------------------------
-def veritabani_baglan():
-    conn = sqlite3.connect("veriler.db")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS bolgeler (
-            bolge_id TEXT PRIMARY KEY,
-            lat REAL, lon REAL,
-            risk_skoru REAL, oncelik_skoru REAL, tahliye_skoru REAL,
-            yangin_yonu_derece REAL, yayilma_hizi TEXT,
-            yukseklik_metre REAL, egim_derece REAL,
-            guncelleme_zamani TEXT
-        )
-    """)
-    conn.commit()
-    return conn
-
-def bolge_ekle(conn, bolge):
-    conn.execute(
-        "INSERT OR REPLACE INTO bolgeler VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (bolge["bolge_id"], bolge["lat"], bolge["lon"], bolge["risk_skoru"],
-         bolge["oncelik_skoru"], bolge["tahliye_skoru"],
-         bolge["yangin_yonu_derece"], bolge["yayilma_hizi"],
-         bolge["yukseklik_metre"], bolge["egim_derece"],
-         bolge["guncelleme_zamani"])
-    )
-    conn.commit()
 
 # -----------------------------------------------------------------------
 # YARDIMCI FONKSİYONLAR
@@ -77,8 +66,9 @@ def hava_verisi_cek(lat, lon):
             "ruzgar_hizi": c["wind_speed_10m"],
             "ruzgar_yonu": c["wind_direction_10m"]
         }
-    except:
+    except requests.RequestException:
         return None
+
 
 def yukseklik_cek(lat, lon):
     try:
@@ -94,25 +84,34 @@ def yukseklik_cek(lat, lon):
             "dogu":   sonuclar[3]["elevation"],
             "bati":   sonuclar[4]["elevation"],
         }
-    except:
+    except requests.RequestException:
         return None
 
-def db_den_yukseklik_getir(bolge_id, conn):
-    row = conn.execute(
-        "SELECT yukseklik_metre, egim_derece FROM bolgeler WHERE bolge_id=?",
-        (bolge_id,)
-    ).fetchone()
-    return row
 
-def son_guncelleme_eskimi(bolge_id, conn, dakika=30):
-    row = conn.execute(
-        "SELECT guncelleme_zamani FROM bolgeler WHERE bolge_id=?",
-        (bolge_id,)
-    ).fetchone()
-    if row is None or row[0] is None:
+def guncelleme_eskimi_mi(bolge, dakika=30):
+    """bolge: veritabani.bolge_getir()'den gelen dict ya da None."""
+    if bolge is None or bolge.get("guncelleme_zamani") is None:
         return True
-    son = datetime.fromisoformat(row[0])
+    son = datetime.fromisoformat(bolge["guncelleme_zamani"])
     return datetime.utcnow() - son > timedelta(minutes=dakika)
+
+
+# --- OSM kritik alanları (hastane/okul/huzurevi/köy) — sadece 1 kez çekilir,
+#     bellekte tutulur. Overpass'a her /bolgeler isteğinde gitmiyoruz. ---
+_kritik_alanlar_cache = None
+
+
+def kritik_alanlari_getir():
+    global _kritik_alanlar_cache
+    if _kritik_alanlar_cache is None:
+        try:
+            _kritik_alanlar_cache = osm_kritik_alanlari_cek()
+        except Exception:
+            # Overpass o an cevap vermiyorsa sistem çökmesin; boş liste ile
+            # devam et, bolge_oncelik_belirle() bu durumda 0.5 (nötr) döner.
+            _kritik_alanlar_cache = []
+    return _kritik_alanlar_cache
+
 
 # -----------------------------------------------------------------------
 # ENDPOİNTLER
@@ -121,12 +120,26 @@ def son_guncelleme_eskimi(bolge_id, conn, dakika=30):
 def ana_sayfa():
     return {"durum": "calisiyor", "proje": "AteşKes"}
 
+
 @app.get("/saglik")
 def saglik():
-    return {"durum": "✅ API çalışıyor"}
+    return {"durum": "API çalışıyor"}
 
-@app.get("/bolgeler")
-def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0):
+
+@app.get(
+    "/bolgeler",
+    summary="Aktif yangın noktalarını risk/eğim/tahliye bilgisiyle döndürür",
+)
+def bolgeler_getir(
+    limit: int = Query(20, description="Döndürülecek maksimum nokta sayısı", example=20),
+    min_risk: float = Query(0.0, ge=0.0, le=1.0, description="0-1 arası minimum risk skoru filtresi"),
+    max_risk: float = Query(1.0, ge=0.0, le=1.0, description="0-1 arası maksimum risk skoru filtresi"),
+):
+    """NASA FIRMS'ten aktif yangın noktalarını çeker; her nokta için Open-Meteo
+    hava verisi ve Open-Topo-Data eğim/yükseklik verisiyle Sultan'ın risk,
+    öncelik ve tahliye formüllerini uygular. Coğrafi veriler (yükseklik, eğim,
+    öncelik) veritabanında önbelleklenir; hava/risk 30 dakikada bir tazelenir.
+    """
     MAP_KEY = os.getenv("MAP_KEY")
     url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/MODIS_NRT/26,36,45,42/1"
     r = requests.get(url, timeout=30)
@@ -149,88 +162,120 @@ def bolgeler_getir(limit: int = 20, min_risk: float = 0.0, max_risk: float = 1.0
             lon = float(degerler[basliklar.index("longitude")])
             acq_date = degerler[basliklar.index("acq_date")] if "acq_date" in basliklar else ""
             confidence = degerler[basliklar.index("confidence")] if "confidence" in basliklar else ""
-        except:
+        except (ValueError, IndexError):
             continue
 
         bolge_id = f"nokta_{lat}_{lon}"
 
-        # --- Yükseklik/eğim: DB'de varsa tekrar çekme ---
-        cached = db_den_yukseklik_getir(bolge_id, conn)
-        if cached:
-            yukseklik_metre, egim_derece = cached
-            yukseklikler = None
+        # --- CRUD: READ. Bu nokta daha önce işlendi mi? ---
+        mevcut = bolge_getir(conn, bolge_id)
+
+        # --- Yükseklik/eğim: coğrafya sabit, DB'de varsa tekrar çekme ---
+        if mevcut and mevcut["yukseklik_metre"] is not None:
+            yukseklik_metre = mevcut["yukseklik_metre"]
+            egim_derece = mevcut["egim_derece"]
+            egim_yonu = mevcut["egim_yonu"]  # coğrafi olarak sabit, DB'den okunuyor
         else:
             yukseklikler = yukseklik_cek(lat, lon)
             if yukseklikler is None:
                 continue
             yukseklik_metre = yukseklikler["merkez"]
             egim_derece = egim_hesapla(yukseklikler)
+            egim_yonu = egim_yonu_belirle(yukseklikler)
 
-        # --- Hava: 30 dakikada bir güncelle ---
-        if son_guncelleme_eskimi(bolge_id, conn, dakika=30):
+        # --- Hava + risk: sadece 30 dakikada bir yeniden hesapla ---
+        if guncelleme_eskimi_mi(mevcut, dakika=30):
             hava = hava_verisi_cek(lat, lon)
             if hava is None:
                 continue
 
-            # Eğim yönü hesapla
-            if yukseklikler:
-                egim_yonu = egim_yonu_belirle(yukseklikler)
-            else:
-                egim_yonu = "kuzey"  # DB'den gelince varsayılan
-
-            # Sultan'ın fonksiyonları
             risk = risk_skoru(hava["sicaklik"], hava["ruzgar_hizi"], hava["nem"], egim_derece)
-            oncelik = 0.7
+            oncelik, en_yakin_alan, _ = bolge_oncelik_belirle(
+                lat, lon, kritik_alanlari_getir(), maks_mesafe_metre=20000
+            )
             tahliye = tahliye_skoru(risk, oncelik)
             uyumlu = ruzgar_egime_uyumlu_mu(hava["ruzgar_yonu"], egim_yonu)
             yayilma = yayilma_hizi_belirle(hava["ruzgar_hizi"], egim_derece, uyumlu)
 
-            bolge_ekle(conn, {
-                "bolge_id": bolge_id,
-                "lat": lat,
-                "lon": lon,
-                "risk_skoru": round(risk, 3),
-                "oncelik_skoru": oncelik,
-                "tahliye_skoru": tahliye,
-                "yangin_yonu_derece": hava["ruzgar_yonu"],
-                "yayilma_hizi": yayilma,
-                "yukseklik_metre": yukseklik_metre,
-                "egim_derece": egim_derece,
-                "guncelleme_zamani": datetime.utcnow().isoformat()
-            })
-
+            bolge = {
+                "bolge_id": bolge_id, "lat": lat, "lon": lon,
+                "risk_skoru": round(risk, 3), "oncelik_skoru": oncelik, "tahliye_skoru": tahliye,
+                "yangin_yonu_derece": hava["ruzgar_yonu"], "yayilma_hizi": yayilma,
+                "yukseklik_metre": yukseklik_metre, "egim_derece": egim_derece, "egim_yonu": egim_yonu,
+                "sicaklik": hava["sicaklik"], "nem": hava["nem"], "ruzgar_hizi": hava["ruzgar_hizi"],
+                "guncelleme_zamani": datetime.utcnow().isoformat(),
+            }
+            # --- CRUD: CREATE/UPDATE. Hesaplanan veriyi DB'ye yaz ---
+            bolge_ekle(conn, bolge)
         else:
-            row = conn.execute(
-                "SELECT risk_skoru, oncelik_skoru, tahliye_skoru, yangin_yonu_derece, yayilma_hizi FROM bolgeler WHERE bolge_id=?",
-                (bolge_id,)
-            ).fetchone()
-            risk, oncelik, tahliye, yangin_yonu_derece, yayilma = row
-            hava = hava_verisi_cek(lat, lon)
+            # Hava/risk taze — dış API'ye gitmeden DB'deki değerleri kullan
+            bolge = mevcut
 
-        if risk < min_risk or risk > max_risk:
+        if bolge["risk_skoru"] < min_risk or bolge["risk_skoru"] > max_risk:
             continue
 
-        sonuclar.append({
-            "bolge_id": bolge_id,
-            "lat": lat,
-            "lon": lon,
-            "risk_skoru": round(risk, 3),
-            "oncelik_skoru": oncelik,
-            "tahliye_skoru": tahliye,
-            "yangin_yonu_derece": hava["ruzgar_yonu"] if hava else None,
-            "yayilma_hizi": yayilma,
-            "sicaklik": hava["sicaklik"] if hava else None,
-            "ruzgar_hizi": hava["ruzgar_hizi"] if hava else None,
-            "ruzgar_yonu": hava["ruzgar_yonu"] if hava else None,
-            "nem": hava["nem"] if hava else None,
-            "yukseklik_metre": yukseklik_metre,
-            "egim_derece": egim_derece,
-            "acq_date": acq_date,
-            "confidence": confidence
-        })
+        sonuclar.append({**bolge, "acq_date": acq_date, "confidence": confidence})
 
     conn.close()
     return {"toplam_nokta": len(sonuclar), "veri": sonuclar}
+
+
+@app.get("/bolgeler/{bolge_id}")
+def tek_bolge(bolge_id: str):
+    conn = veritabani_baglan()
+    bolge = bolge_getir(conn, bolge_id)
+    conn.close()
+    if bolge is None:
+        return {"hata": "bolge bulunamadi"}
+    return bolge
+
+
+@app.get(
+    "/yollar",
+    summary="Bölgedeki yolları eğim etiketiyle döndürür",
+    response_description="Ana yol / tali yol / orman yolu olarak sınıflandırılmış, her segmentte egim_derece alanı olan yol listesi.",
+)
+def yollar_getir(
+    min_lat: float = Query(..., description="Bounding box güney sınırı, örn. 36.75", example=36.75),
+    min_lon: float = Query(..., description="Bounding box batı sınırı, örn. 28.15", example=28.15),
+    max_lat: float = Query(..., description="Bounding box kuzey sınırı, örn. 36.95", example=36.95),
+    max_lon: float = Query(..., description="Bounding box doğu sınırı, örn. 28.40", example=28.40),
+    egim_ekle: bool = Query(True, description="True ise her segmentin egim_derece alanı hesaplanır (yavaşlatır)."),
+):
+    """
+    Verilen bounding box içindeki yolları OSM/Overpass'tan çeker.
+
+    egim_ekle=true olduğunda her segmentin başlangıç ve bitiş noktasında
+    Sultan'ın egim_hesapla() fonksiyonu çağrılır, ikisinin ortalaması
+    segmentin egim_derece alanına yazılır (Sultan'ın A* Eğim Cezası bu
+    alanı kullanacak).
+    """
+    yollar = yol_verisi_cek((min_lat, min_lon, max_lat, max_lon))
+    if not yollar:
+        logger.warning("Bu bbox icin yol verisi bulunamadi: %s", (min_lat, min_lon, max_lat, max_lon))
+        return {"hata": "Yol verisi alinamadi veya bu bolgede yol yok", "toplam_yol": 0, "veri": []}
+
+    if egim_ekle:
+        # Aynı düğüm birçok segmentte başlangıç/bitiş olarak tekrar edebilir
+        # (kavşaklar) — aynı koordinat için Open-Topo-Data'yı iki kez
+        # çağırmamak için bu istek boyunca geçerli basit bir bellek önbelleği.
+        _egim_onbellek = {}
+
+        def egim_al(lat, lon):
+            anahtar = (round(lat, 5), round(lon, 5))
+            if anahtar not in _egim_onbellek:
+                yukseklikler = yukseklik_cek(lat, lon)
+                _egim_onbellek[anahtar] = egim_hesapla(yukseklikler) if yukseklikler else None
+            return _egim_onbellek[anahtar]
+
+        for yol in yollar:
+            baslangic = yol["koordinatlar"][0]
+            bitis = yol["koordinatlar"][-1]
+            egimler = [e for e in (egim_al(*baslangic), egim_al(*bitis)) if e is not None]
+            yol["egim_derece"] = round(sum(egimler) / len(egimler), 1) if egimler else None
+
+    return {"toplam_yol": len(yollar), "veri": yollar}
+
 
 @app.get("/debug-firms")
 def debug_firms():
