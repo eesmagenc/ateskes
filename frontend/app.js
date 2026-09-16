@@ -1,6 +1,7 @@
 
 const map = L.map('map').setView([37.2153, 28.3636], 10);
 
+
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_31bb_1_b53b43996e67049c65f76f0c', {
   attribution: '&copy; OpenStreetMap katkıda bulunanlar &copy; CARTO',
   subdomains: 'abcd',
@@ -46,6 +47,15 @@ function ruzgarYonuMetni(derece) {
   const yonler = ["K", "KD", "D", "GD", "G", "GB", "B", "KB"];
   const index = Math.round(derece / 45) % 8;
   return `${yonler[index]} (${derece}°)`;
+}
+
+function yayilmaHiziMetni(hiz) {
+  const esleme = {
+    yavas: "Yavaş",
+    orta: "Orta",
+    hizli: "Hızlı"
+  };
+  return esleme[hiz] ?? "—";
 }
 
 
@@ -367,9 +377,10 @@ L.polyline(onerilenRota, {
 const riskNoktalari = clusterGrup; 
 const kritikAlanlar = L.layerGroup(); // Şimdilik boş / yakında
 
+// Sadece Risk Noktaları varsayılan açık; Yollar, Heatmap ve Rota
+// kullanıcı Katmanlar panelinden manuel açana kadar haritaya
+// eklenmiyor — ilk açılışta sade bir görünüm için.
 riskNoktalari.addTo(map);
-yolKatmani.addTo(map);
-heatmapKatmani.addTo(map);
 
 // --- Katman checkbox'ları (artık filtre panelinin içinde) ---
 const katmanEslesme = {
@@ -378,8 +389,6 @@ const katmanEslesme = {
   "heatmap": heatmapKatmani,
   "rota": rotaKatmani
 };
-
-rotaKatmani.addTo(map);
 
 document.querySelectorAll('#filtre-paneli input[data-katman]').forEach((checkbox) => {
   checkbox.addEventListener("change", () => {
@@ -404,8 +413,13 @@ let popupAcikMi = false;
 // Dışarı tıklama: capture fazında çalışıyor ki Leaflet kendi popup kapatma
 // mantığını çalıştırmadan ÖNCE biz "popup açık mıydı" bilgisini yakalayalım.
 document.addEventListener('click', (e) => {
-  // Filtre paneli veya toggle butonuna tıklandıysa dokunma
-  if (filtrePaneli.contains(e.target) || filtreToggle.contains(e.target)) return;
+  // Filtre paneli, dashboard paneli veya bunların toggle butonlarına tıklandıysa dokunma
+  if (
+    filtrePaneli.contains(e.target) ||
+    filtreToggle.contains(e.target) ||
+    dashboardPaneli.contains(e.target) ||
+    dashboardToggle.contains(e.target)
+  ) return;
 
   // Popup içine tıklandıysa dokunma
   if (e.target.closest('.leaflet-popup')) return;
@@ -420,8 +434,9 @@ document.addEventListener('click', (e) => {
     return;
   }
 
-  // Popup kapalıysa: panel açıksa kapat.
+  // Popup kapalıysa: paneller açıksa kapat.
   filtrePaneli.classList.remove('acik');
+  dashboardPaneli.classList.remove('acik');
 }, true);
 
 function filtreleriUygula() {
@@ -478,12 +493,12 @@ function popupIcerigi(bolge, kategori) {
           <i data-lucide="compass" class="saha-icon"></i>
           <span class="saha-value">${bolge.yangin_yonu_derece != null ? ruzgarYonuMetni(bolge.yangin_yonu_derece) : '—'}</span>
         </div>
-        <span class="saha-label">Rüzgar</span>
+        <span class="saha-label">Rüzgar Yönü</span>
       </div>
       <div class="saha-item">
         <div class="saha-ust">
           <i data-lucide="wind" class="saha-icon"></i>
-          <span class="saha-value">${bolge.yayilma_hizi ?? '—'}</span>
+          <span class="saha-value">${yayilmaHiziMetni(bolge.yayilma_hizi)}</span>
         </div>
         <span class="saha-label">Yayılma Hızı</span>
       </div>
