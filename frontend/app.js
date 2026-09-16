@@ -240,15 +240,32 @@ const mockYollar = [
   }
 ];
 
+// Plan üç kategori öngörüyor: ana yol / tali yol / orman yolu.
+// Esma'nın backend'inin "tip" alanında hangi tam string'leri kullandığını
+// henüz bilmiyoruz — bu fonksiyon hem Türkçe (ana/tali/orman) hem OSM'in
+// kendi highway isimlerini (primary/secondary/track gibi) kabaca kategorize
+// ediyor. Esma'dan kesin değerler gelince bu eşleştirme netleştirilecek.
+function yolKategorisi(tip) {
+  const deger = (tip || "").toLowerCase();
+  if (["ana", "primary", "trunk", "motorway"].includes(deger)) return "ana";
+  if (["tali", "secondary", "tertiary"].includes(deger)) return "tali";
+  return "orman"; // track, unclassified, service, orman, vb. — bilinmeyen her şey
+}
+
 function yolCiz(yol) {
-  const anaYolMu = yol.tip === "ana";
-  const renk = anaYolMu ? "#3b82f6" : "#8b5e3c";
-  const kalinlik = anaYolMu ? 1.8 : 1.2;
+  const kategori = yolKategorisi(yol.tip);
+
+  const stiller = {
+    ana:   { renk: "#3b82f6", kalinlik: 1.8, kesikli: null },
+    tali:  { renk: "#f59e0b", kalinlik: 1.5, kesikli: "3 3" },
+    orman: { renk: "#8b5e3c", kalinlik: 1.2, kesikli: "5 5" }
+  };
+  const stil = stiller[kategori];
 
   // İnce, hafif koyu dış çizgi — belirginlik için, kalınlığı abartmadan
   L.polyline(yol.koordinatlar, {
     color: "#101820",
-    weight: kalinlik + 1.5,
+    weight: stil.kalinlik + 1.5,
     opacity: 0.6,
     lineCap: "round",
     lineJoin: "round",
@@ -257,10 +274,10 @@ function yolCiz(yol) {
 
   // Asıl ince renkli çizgi
   L.polyline(yol.koordinatlar, {
-    color: renk,
-    weight: kalinlik,
+    color: stil.renk,
+    weight: stil.kalinlik,
     opacity: 0.9,
-    dashArray: anaYolMu ? null : "5 5",
+    dashArray: stil.kesikli,
     lineCap: "round",
     lineJoin: "round",
     smoothFactor: 1.5
@@ -268,22 +285,29 @@ function yolCiz(yol) {
 }
 
 function yollariGetir() {
-  const yolUrl = BACKEND_URL.replace("/bolgeler", "/yollar");
+  // /yollar zorunlu bounding box parametreleri istiyor (min_lat, min_lon,
+  // max_lat, max_lon) — Muğla/Bodrum bölgesini kapsayan bir kutu veriyoruz.
+  const yolUrl = BACKEND_URL.replace("/bolgeler", "/yollar") +
+    "?min_lat=36.60&min_lon=27.30&max_lat=37.35&max_lon=29.15&egim_ekle=false";
 
   fetch(yolUrl)
     .then((r) => {
       if (!r.ok) throw new Error(`Backend ${r.status} döndü`);
       return r.json();
     })
-    .then((veri) => {
+    .then((yanit) => {
       console.log("Gerçek yol verisi kullanılıyor:", yolUrl);
-      // Esma'nın gerçek /yollar yanıtının şeklini henüz bilmiyoruz —
-      // burada bir varsayım yapıyoruz (geometry + highway alanları).
-      // Gerçek şekil netleşince bu dönüştürme satırı güncellenecek.
-      const gercekYollar = veri.map((yol) => ({
-        koordinatlar: yol.geometry ?? yol.koordinatlar,
-        tip: (yol.highway === "track" || yol.tip === "orman") ? "orman" : "ana"
+      // Gerçek şekil: { toplam_yol, veri: [{ koordinatlar, tip, egim_derece }] }
+      // "tip" alanının gerçek değerlerini (ana/orman mi, başka bir
+      // sınıflandırma mı) Esma'dan teyit almadan kesin eşleştiremiyoruz,
+      // şimdilik "ana" dışındaki her şeyi "orman" sayıyoruz.
+      const gercekYollar = (yanit.veri || []).map((yol) => ({
+        koordinatlar: yol.koordinatlar,
+        tip: yol.tip
       }));
+      if (gercekYollar.length === 0) {
+        throw new Error("Yol verisi boş döndü");
+      }
       gercekYollar.forEach(yolCiz);
     })
     .catch((err) => {

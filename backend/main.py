@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import requests
+import sqlite3
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query
@@ -286,4 +287,33 @@ def debug_firms():
         "url": url,
         "status_code": r.status_code,
         "ilk_100_karakter": r.text[:100]
+    }
+
+@app.get("/istatistikler")
+def istatistikler_getir():
+    conn = veritabani_baglan()
+    conn.row_factory = sqlite3.Row
+    tum_bolgeler = tum_bolgeleri_getir(conn)
+    conn.close()
+
+    if not tum_bolgeler:
+        return {
+            "toplam_bolge": 0,
+            "ortalama_risk": 0,
+            "en_yuksek_riskli_3": []
+        }
+
+    toplam_bolge = len(tum_bolgeler)
+    ortalama_risk = round(sum(b["risk_skoru"] for b in tum_bolgeler) / toplam_bolge, 3)
+
+    en_yuksek_riskli_3 = sorted(tum_bolgeler, key=lambda b: b["risk_skoru"], reverse=True)[:3]
+    en_yuksek_riskli_3 = [
+        {"bolge_id": b["bolge_id"], "risk_skoru": round(b["risk_skoru"], 3)}
+        for b in en_yuksek_riskli_3
+    ]
+
+    return {
+        "toplam_bolge": toplam_bolge,
+        "ortalama_risk": ortalama_risk,
+        "en_yuksek_riskli_3": en_yuksek_riskli_3
     }
